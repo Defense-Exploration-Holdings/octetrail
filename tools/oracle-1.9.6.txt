@@ -1,0 +1,2 @@
+# Separate downstream reference, not the normative API baseline.
+dpkt==1.9.6 --hash=sha256:b1739c594297b2b6321dfbf133e3f8dcf54c0ef54cb5739d204331d34a0d8fe4

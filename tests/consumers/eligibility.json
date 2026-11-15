@@ -1,0 +1,217 @@
+{
+  "schema_version": 1,
+  "scope": "Curated project-authored offline capture consumer scenarios, not the upstream test suite or a full API denominator.",
+  "scenarios": [
+    {
+      "id": "pcap_micro.read",
+      "fixture": "pcap_micro",
+      "format": "pcap",
+      "nano": false,
+      "operation": "read",
+      "status": "eligible"
+    },
+    {
+      "id": "pcap_micro.dispatch",
+      "fixture": "pcap_micro",
+      "format": "pcap",
+      "nano": false,
+      "operation": "dispatch",
+      "status": "eligible"
+    },
+    {
+      "id": "pcap_micro.copy",
+      "fixture": "pcap_micro",
+      "format": "pcap",
+      "nano": false,
+      "operation": "copy",
+      "status": "eligible"
+    },
+    {
+      "id": "pcap_nano.read",
+      "fixture": "pcap_nano",
+      "format": "pcap",
+      "nano": true,
+      "operation": "read",
+      "status": "eligible"
+    },
+    {
+      "id": "pcap_nano.dispatch",
+      "fixture": "pcap_nano",
+      "format": "pcap",
+      "nano": true,
+      "operation": "dispatch",
+      "status": "eligible"
+    },
+    {
+      "id": "pcap_nano.copy",
+      "fixture": "pcap_nano",
+      "format": "pcap",
+      "nano": true,
+      "operation": "copy",
+      "status": "eligible"
+    },
+    {
+      "id": "pcapng_micro.read",
+      "fixture": "pcapng_micro",
+      "format": "pcapng",
+      "nano": false,
+      "operation": "read",
+      "status": "eligible"
+    },
+    {
+      "id": "pcapng_micro.dispatch",
+      "fixture": "pcapng_micro",
+      "format": "pcapng",
+      "nano": false,
+      "operation": "dispatch",
+      "status": "eligible"
+    },
+    {
+      "id": "pcapng_micro.copy",
+      "fixture": "pcapng_micro",
+      "format": "pcapng",
+      "nano": false,
+      "operation": "copy",
+      "status": "eligible"
+    },
+    {
+      "id": "pcapng_custom.read",
+      "fixture": "pcapng_custom",
+      "format": "pcapng",
+      "nano": false,
+      "operation": "read",
+      "status": "eligible"
+    },
+    {
+      "id": "pcapng_custom.dispatch",
+      "fixture": "pcapng_custom",
+      "format": "pcapng",
+      "nano": false,
+      "operation": "dispatch",
+      "status": "eligible"
+    },
+    {
+      "id": "pcapng_custom.copy",
+      "fixture": "pcapng_custom",
+      "format": "pcapng",
+      "nano": false,
+      "operation": "copy",
+      "status": "ineligible",
+      "reason": "The covered seconds copy does not preserve custom interface clocks or negative decoded times; raw ticks are a separate API."
+    },
+    {
+      "id": "pcap_empty.read",
+      "fixture": "pcap_empty",
+      "format": "pcap",
+      "nano": false,
+      "operation": "read",
+      "status": "eligible"
+    },
+    {
+      "id": "pcap_empty.dispatch",
+      "fixture": "pcap_empty",
+      "format": "pcap",
+      "nano": false,
+      "operation": "dispatch",
+      "status": "eligible"
+    },
+    {
+      "id": "pcap_empty.copy",
+      "fixture": "pcap_empty",
+      "format": "pcap",
+      "nano": false,
+      "operation": "copy",
+      "status": "eligible"
+    },
+    {
+      "id": "pcapng_empty.read",
+      "fixture": "pcapng_empty",
+      "format": "pcapng",
+      "nano": false,
+      "operation": "read",
+      "status": "eligible"
+    },
+    {
+      "id": "pcapng_empty.dispatch",
+      "fixture": "pcapng_empty",
+      "format": "pcapng",
+      "nano": false,
+      "operation": "dispatch",
+      "status": "eligible"
+    },
+    {
+      "id": "pcapng_empty.copy",
+      "fixture": "pcapng_empty",
+      "format": "pcapng",
+      "nano": false,
+      "operation": "copy",
+      "status": "eligible"
+    },
+    {
+      "id": "pcap_record_short.error",
+      "fixture": "pcap_record_short",
+      "format": "pcap",
+      "nano": false,
+      "operation": "error",
+      "status": "eligible"
+    },
+    {
+      "id": "pcapng_trailer_short.error",
+      "fixture": "pcapng_trailer_short",
+      "format": "pcapng",
+      "nano": false,
+      "operation": "error",
+      "status": "eligible"
+    },
+    {
+      "id": "classic_short_payload",
+      "status": "ineligible",
+      "reason": "Known strict difference: upstream yields short bytes while OctetRail raises NeedData."
+    },
+    {
+      "id": "pcapng_short_section_header",
+      "status": "ineligible",
+      "reason": "Initial incomplete-header exception families are not matched."
+    },
+    {
+      "id": "modified_pcap",
+      "status": "ineligible",
+      "reason": "Unsupported format and not a common baseline reader path."
+    },
+    {
+      "id": "universal_reader",
+      "status": "ineligible",
+      "reason": "Absent from dpkt 1.9.6; excluded from this common-baseline consumer."
+    },
+    {
+      "id": "block_object_writer",
+      "status": "ineligible",
+      "reason": "SHB/IDB/EPB object construction and writer inputs are not implemented."
+    },
+    {
+      "id": "full_constants",
+      "status": "ineligible",
+      "reason": "Only sixteen measured capture constants are included, not the complete export inventory."
+    },
+    {
+      "id": "protocol_objects",
+      "status": "ineligible",
+      "reason": "Protocol objects are outside the supported capture API."
+    },
+    {
+      "id": "resolver_pin",
+      "status": "ineligible",
+      "reason": "The octetrail distribution does not satisfy dpkt version requirements."
+    },
+    {
+      "id": "multiple_interface_clocks",
+      "status": "ineligible",
+      "reason": "Known per-interface timing difference, outside matching consumer scope."
+    },
+    {
+      "id": "custom_clock_seconds_writer",
+      "status": "ineligible",
+      "reason": "Nondefault clock options require OctetRail raw-tick API; seconds calls are unsupported."
+    }
+  ]
+}

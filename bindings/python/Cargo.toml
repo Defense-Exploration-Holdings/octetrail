@@ -1,0 +1,24 @@
+[package]
+name = "octetrail-python"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "BSD-3-Clause"
+publish = false
+
+[lib]
+name = "_native"
+crate-type = ["cdylib"]
+# Exercise this extension through installed wheels, not an embedding executable.
+test = false
+doctest = false
+
+[dependencies]
+octetrail = { path = "../.." }
+pyo3 = "=0.30.1"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"

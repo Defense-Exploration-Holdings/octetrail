@@ -1,0 +1,26 @@
+OctetRail is a Rust rewrite of dpkt, using dpkt as its Python API and behavior
+reference. dpkt was created by Dug Song and maintained by its contributors.
+Upstream: https://github.com/kbandla/dpkt
+Published reference: https://pypi.org/project/dpkt/1.9.8/
+
+The Rust parser/writer, test harness and synthetic fixtures are original project work.
+The Python facades adapt dpkt's capture iteration, callback methods, timestamp
+rounding, UniversalReader selection, link-layer offset data and the covered
+Ethernet field/packing behavior under its BSD license. dpkt's copyright and
+license are retained in licenses/dpkt.txt.
+Keep this notice and that license with source and binary distributions. No upstream endorsement is implied.
+
+The fixed-header TCP API is compared with published dpkt 1.9.6 and 1.9.8.
+The TCP core, facade, independent fixtures and tests are original project work;
+dpkt remains the API/behavior reference under the retained BSD license.
+
+CAPE is an external downstream smoke target, not the rewrite target. Its source
+and tests are linked by revision, not redistributed here.
+
+The IPv4 facade follows dpkt's fixed header fields and ordinary checksum
+serialization behavior under the same retained upstream BSD license.
+
+The fixed-header UDP API uses dpkt 1.9.6 and 1.9.8 as behavior references,
+including retained length/checksum fields and opaque payload handling. The UDP
+core, facade, independently constructed fixtures and tests are original work.
+The applicable upstream BSD attribution and license above remain in force.

@@ -1,0 +1,19 @@
+[package]
+name = "octetrail"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+description = "Bounded offline capture I/O, an early dpkt rewrite"
+license = "BSD-3-Clause"
+publish = false
+
+[workspace]
+members = ["bindings/python"]
+default-members = ["."]
+resolver = "2"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
