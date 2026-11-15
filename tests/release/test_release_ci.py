@@ -275,7 +275,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(set(workflow["on"]), {"pull_request", "push", "workflow_dispatch"})
         self.assertEqual(workflow["on"]["push"], {"branches": ["main"], "tags": ["v*"]})
         self.assertEqual(workflow["permissions"], {"contents": "read"})
-        self.assertEqual(set(workflow["jobs"]), {"build", "release"})
+        self.assertEqual(set(workflow["jobs"]), {"build", "release", "pypi"})
         build, publish = workflow["jobs"]["build"], workflow["jobs"]["release"]
         self.assertEqual(build["permissions"], {"contents": "read"})
         self.assertEqual(publish["permissions"], {"contents": "write"})
@@ -287,16 +287,15 @@ class WorkflowTests(unittest.TestCase):
                     self.assertRegex(step["uses"], r"^[A-Za-z0-9_/-]+@[0-9a-f]{40}$")
         self.assertFalse(any("secrets" in str(j) for j in workflow["jobs"].values()))
         self.assertFalse(any("checkout" in s.get("uses", "") for s in publish["steps"]))
-        self.assertFalse(
-            any("id-token" in j.get("permissions", {}) for j in workflow["jobs"].values())
+        self.assertEqual(
+            [
+                name
+                for name, job in workflow["jobs"].items()
+                if "id-token" in job.get("permissions", {})
+            ],
+            ["pypi"],
         )
-        self.assertFalse(
-            any(
-                "pypi-publish" in s.get("uses", "")
-                for j in workflow["jobs"].values()
-                for s in j["steps"]
-            )
-        )
+        self.assertFalse(any("pypi-publish" in step.get("uses", "") for step in publish["steps"]))
         self.assertEqual(publish["steps"][2]["env"]["GH_TOKEN"], "${{ github.token }}")
         for step in publish["steps"]:
             self.assertNotIn("tools/", step.get("run", ""))
