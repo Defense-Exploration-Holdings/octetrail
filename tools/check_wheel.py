@@ -6,6 +6,8 @@ import csv
 import hashlib
 import io
 import json
+import re
+import tomllib
 import zipfile
 from email.parser import BytesParser
 from pathlib import Path
@@ -13,54 +15,90 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def check(path):
+def require(condition, message):
+    if not condition:
+        raise ValueError(message)
+
+
+def check(path, expected_version=None):
+    version = (
+        expected_version
+        or tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+    )
+    require(
+        bool(re.fullmatch(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", version)),
+        "version format",
+    )
     with zipfile.ZipFile(path) as archive:
         names = archive.namelist()
-        assert len(names) == len(set(names)), "duplicate wheel entry"
-        assert {name.split("/", 1)[0] for name in names} == {
-            "octetrail",
-            "octetrail-0.1.0.dist-info",
-        }
-        assert "octetrail/capture.py" in names
-        assert not any(name.startswith("dpkt/") for name in names)
-        assert "dpkt.py" not in names
-        assert not any(
-            name.endswith(".pth") or Path(name).name in ("sitecustomize.py", "usercustomize.py")
-            for name in names
+        require(len(names) == len(set(names)), "duplicate wheel entry")
+        require(
+            {name.split("/", 1)[0] for name in names}
+            == {"octetrail", f"octetrail-{version}.dist-info"},
+            "wheel validation failed",
         )
-        assert {name.split("/", 1)[0] for name in names if ".dist-info/" in name} == {
-            "octetrail-0.1.0.dist-info"
-        }
-        record_name = next(name for name in names if name.endswith(".dist-info/RECORD"))
+        require("octetrail/capture.py" in names, "wheel validation failed")
+        require(not any((name.startswith("dpkt/") for name in names)), "wheel validation failed")
+        require("dpkt.py" not in names, "wheel validation failed")
+        require(
+            not any(
+                (
+                    name.endswith(".pth")
+                    or Path(name).name in ("sitecustomize.py", "usercustomize.py")
+                    for name in names
+                )
+            ),
+            "wheel validation failed",
+        )
+        require(
+            {name.split("/", 1)[0] for name in names if ".dist-info/" in name}
+            == {f"octetrail-{version}.dist-info"},
+            "wheel validation failed",
+        )
+        record_name = next((name for name in names if name.endswith(".dist-info/RECORD")))
         rows = list(csv.reader(io.StringIO(archive.read(record_name).decode())))
-        assert {row[0] for row in rows} == set(names)
+        require({row[0] for row in rows} == set(names), "wheel validation failed")
         for name, digest, length in rows:
             if name == record_name:
-                assert digest == length == ""
+                require(digest == length == "", "wheel validation failed")
                 continue
             data = archive.read(name)
             encoded = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=")
-            assert digest == "sha256=" + encoded.decode()
-            assert int(length) == len(data)
+            require(digest == "sha256=" + encoded.decode(), "wheel validation failed")
+            require(int(length) == len(data), "wheel validation failed")
             for forbidden in (str(ROOT).encode(), b"/workspace/", b"/home/agent/"):
-                assert forbidden not in data, f"build-machine path in {name}"
+                require(forbidden not in data, f"build-machine path in {name}")
             if ".dist-info/sboms/" in name:
                 sbom = json.loads(data)
-                assert sbom["metadata"]["component"]["name"] == "octetrail-python"
-                assert b"path+file://./" in data
-        metadata_name = next(name for name in names if name.endswith(".dist-info/METADATA"))
+                require(
+                    sbom["metadata"]["component"]["name"] == "octetrail-python",
+                    "wheel validation failed",
+                )
+                require(b"path+file://./" in data, "wheel validation failed")
+        metadata_name = next((name for name in names if name.endswith(".dist-info/METADATA")))
         metadata = BytesParser().parsebytes(archive.read(metadata_name))
-        assert metadata["Name"] == "octetrail" and metadata["Version"] == "0.1.0"
-        assert not metadata.get_all("Requires-Dist")
-        assert not metadata.get_all("Provides-Dist")
-        assert not any(
-            metadata.get(key)
-            for key in ("Author", "Author-email", "Maintainer", "Maintainer-email")
+        require(
+            metadata["Name"] == "octetrail" and metadata["Version"] == version,
+            "wheel validation failed",
+        )
+        require(not metadata.get_all("Requires-Dist"), "wheel validation failed")
+        require(not metadata.get_all("Provides-Dist"), "wheel validation failed")
+        require(
+            not any(
+                (
+                    metadata.get(key)
+                    for key in ("Author", "Author-email", "Maintainer", "Maintainer-email")
+                )
+            ),
+            "wheel validation failed",
         )
         for suffix in ("licenses/LICENSE", "licenses/NOTICE", "licenses/licenses/dpkt.txt"):
-            assert any(name.endswith(suffix) for name in names)
-        assert any("licenses/rust/pyo3-0.30.1-LICENSE-MIT.txt" in name for name in names)
-        assert any("LICENSE-UNICODE.txt" in name for name in names)
+            require(any((name.endswith(suffix) for name in names)), "wheel validation failed")
+        require(
+            any(("licenses/rust/pyo3-0.30.1-LICENSE-MIT.txt" in name for name in names)),
+            "wheel validation failed",
+        )
+        require(any(("LICENSE-UNICODE.txt" in name for name in names)), "wheel validation failed")
     print(f"{path.name}: RECORD, namespace, licenses and path checks passed")
 
 

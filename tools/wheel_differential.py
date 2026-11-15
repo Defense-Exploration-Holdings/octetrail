@@ -6,6 +6,7 @@ import json
 import struct
 import subprocess
 import tempfile
+import tomllib
 from decimal import Decimal
 from pathlib import Path
 
@@ -48,6 +49,7 @@ def main():
     parser.add_argument("--oracle-198", required=True)
     parser.add_argument("--oracle-196", required=True)
     args = parser.parse_args()
+    version = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
     cases = []
     for order in ("<", ">"):
         for nano in (False, True):
@@ -90,7 +92,7 @@ def main():
             "short_payload": ordinary[:-1].hex(),
             "header_errors": [ordinary[:10].hex(), ordinary[:30].hex(), unknown_magic.hex()],
         }
-        actual = probe(args.python, "octetrail", "0.1.0", payload)
+        actual = probe(args.python, "octetrail", version, payload)
         assert actual["origin_verified"]
         assert actual["short_payload"] == {"error": "NeedData"}
         packet_count = 0

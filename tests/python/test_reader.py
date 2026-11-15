@@ -9,6 +9,7 @@ import os
 import struct
 import sys
 import tempfile
+import tomllib
 import unittest
 import weakref
 from decimal import Decimal, Inexact, localcontext
@@ -38,7 +39,10 @@ class InstalledReaderTests(unittest.TestCase):
         self.assertTrue(
             Path(pcap._native.__file__).resolve().is_relative_to(Path(sys.prefix).resolve())
         )
-        self.assertEqual(importlib.metadata.version("octetrail"), "0.1.0")
+        self.assertEqual(
+            importlib.metadata.version("octetrail"),
+            tomllib.loads((ROOT.parent / "pyproject.toml").read_text())["project"]["version"],
+        )
         self.assertIsNone(importlib.util.find_spec("dpkt"))
         distribution = importlib.metadata.distribution("octetrail")
         self.assertFalse(distribution.requires)
