@@ -65,7 +65,7 @@ same-run recovery path below.
 Choose an unused version, update all version declarations and the lockfile
 together, and deliberately tag the reviewed current `main` commit. Approve the
 protected environment only after reviewing the successful build and its files.
-The `0.1.0` metadata's Alpha classifier is not a prerelease version spelling;
+The `0.2.0` metadata's Alpha classifier is not a prerelease version spelling;
 prerelease and local-version tag spellings are excluded.
 
 Only the dedicated release job requests `contents: write`. It downloads the

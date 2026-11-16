@@ -5,7 +5,7 @@ describes the supported Enhanced Packet Block reader.
 The separate [classic writer guide](pcap-writer.md) describes output and file
 ownership, which differs from the borrowed Reader interface.
 
-The experimental distribution is `octetrail==0.1.0`, with an `octetrail` import.
+The experimental distribution is `octetrail==0.2.0`, with an `octetrail` import.
 It neither provides `dpkt` nor satisfies a dependency on `dpkt==1.9.6` or
 `dpkt==1.9.8`. No fallback imports upstream dpkt. The native core still has no
 third-party runtime dependencies. A separate PyO3 extension adapts Python binary
@@ -126,7 +126,7 @@ project's environment. For example, with CPython 3.12:
 ```sh
 OCTETRAIL_TEST_ENV=$(mktemp -d)
 python3.12 -m venv "$OCTETRAIL_TEST_ENV"
-"$OCTETRAIL_TEST_ENV/bin/python" -m pip install --no-index --no-deps dist/octetrail-0.1.0-cp312-cp312-manylinux_2_34_x86_64.whl
+"$OCTETRAIL_TEST_ENV/bin/python" -m pip install --no-index --no-deps dist/octetrail-0.2.0-cp312-cp312-manylinux_2_34_x86_64.whl
 "$OCTETRAIL_TEST_ENV/bin/python" -I tests/python/test_reader.py
 python3 tools/wheel_differential.py --python "$OCTETRAIL_TEST_ENV/bin/python" --oracle-198 "$PWD/.venv-oracle-198/bin/python" --oracle-196 "$PWD/.venv-oracle-196/bin/python"
 ```

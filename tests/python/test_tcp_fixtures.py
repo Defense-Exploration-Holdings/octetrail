@@ -47,7 +47,8 @@ class TCPFixtureTests(unittest.TestCase):
                         self.assertEqual(value, state[name])
                     self.assertEqual(raw[12], state["off"] * 16)
                     self.assertEqual(raw[13], state["flags"])
-                    self.assertEqual(raw[20:].hex(), state["data"])
+                    self.assertEqual(raw[20 : state["off"] * 4].hex(), state["opts"])
+                    self.assertEqual(raw[state["off"] * 4 :].hex(), state["data"])
                     self.assertEqual(len(raw), state["length"])
                     self.assertEqual(raw[:20].hex(), state["header_hex"])
 
@@ -55,10 +56,10 @@ class TCPFixtureTests(unittest.TestCase):
         payload = cases()
         self.assertEqual(payload, cases())
         self.assertEqual(len({case["id"] for case in payload}), len(payload))
-        self.assertEqual(sum(case["status"] == "difference" for case in payload), 3)
+        self.assertEqual(sum(case["status"] == "difference" for case in payload), 2)
         self.assertEqual(
             {case["id"] for case in payload if case["status"] == "difference"},
-            {"excluded_options", "excluded_nonce", "excluded_reserved"},
+            {"excluded_nonce", "excluded_reserved"},
         )
         self.assertEqual(
             len([case for case in payload if case["id"].startswith("short_header.")]), 20

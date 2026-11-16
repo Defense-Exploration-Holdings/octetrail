@@ -41,8 +41,16 @@ its supplied sink. Default packet allocation is limited to 16 MiB. PCAPNG adds
 block, interface and scan limits. These are parser policies, not total process
 memory, capture-size, packet-count or time limits. Caller-provided I/O can block.
 
-Protocol objects, checksums, header/block object models, full constant inventories,
+The [composition subset](composition.md) covers Ethernet II to IPv4 to TCP/UDP,
+opaque IP/TCP options and ordinary IPv4/transport checksum updates. Other
+protocols, full header/block object models and constant inventories,
 filter execution, live capture and asynchronous I/O are outside the supported
 API. Import compatibility and distribution compatibility are separate: an
 explicit provider or test-only namespace map cannot satisfy a dpkt dependency
 pin. No unchanged application compatibility or performance claim is made.
+
+Snaplen-truncated IPv4 datagrams remain raw Ethernet payload bytes without an
+`ip` alias; the references can expose partial IP/transport objects. Direct IPv4
+parsing raises `NeedData`. Inconsistent IPv4 lengths below the complete header
+also fall back to raw bytes inside Ethernet while retaining direct `ValueError`
+behavior. See the [composition contract](composition.md) for exception boundaries.

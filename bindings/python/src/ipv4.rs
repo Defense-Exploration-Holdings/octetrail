@@ -22,9 +22,9 @@ fn error(error: octetrail::ipv4::Error) -> PyErr {
     match error {
         error @ Error::Truncated { .. } => super::TruncatedError::new_err(error.to_string()),
         Error::InvalidHeaderLength => Ipv4UnpackError::new_err(error.to_string()),
-        error @ (Error::UnsupportedVersion(_)
-        | Error::OptionsUnsupported
-        | Error::OffloadLengthUnsupported) => PyNotImplementedError::new_err(error.to_string()),
+        error @ (Error::UnsupportedVersion(_) | Error::OffloadLengthUnsupported) => {
+            PyNotImplementedError::new_err(error.to_string())
+        }
         Error::Allocation => PyMemoryError::new_err(error.to_string()),
         error => PyValueError::new_err(error.to_string()),
     }
@@ -52,11 +52,21 @@ fn header(fields: Fields<'_>) -> octetrail::ipv4::Header {
 }
 
 #[pyfunction]
+#[pyo3(signature = (raw, *, nested=false))]
 fn _ipv4_unpack<'py>(
     py: Python<'py>,
     raw: &Bound<'py, PyBytes>,
-) -> PyResult<(Fields<'py>, Bound<'py, PyBytes>)> {
-    let packet = octetrail::ipv4::Packet::parse(raw.as_bytes()).map_err(error)?;
+    nested: bool,
+) -> PyResult<(Fields<'py>, Bound<'py, PyBytes>, Bound<'py, PyBytes>)> {
+    let packet = octetrail::ipv4::Packet::parse(raw.as_bytes()).map_err(|failure| {
+        // Preserve the direct API's ValueError, while classifying this exact
+        // parse failure for the enclosing frame's opaque-payload fallback.
+        if nested && matches!(failure, octetrail::ipv4::Error::InvalidTotalLength(_)) {
+            Ipv4UnpackError::new_err(failure.to_string())
+        } else {
+            error(failure)
+        }
+    })?;
     let h = packet.header;
     Ok((
         (
@@ -71,6 +81,7 @@ fn _ipv4_unpack<'py>(
             PyBytes::new(py, &h.src),
             PyBytes::new(py, &h.dst),
         ),
+        PyBytes::new(py, packet.opts),
         PyBytes::new(py, packet.data),
     ))
 }
@@ -85,10 +96,12 @@ fn _ipv4_header<'py>(py: Python<'py>, fields: Fields<'py>) -> PyResult<Bound<'py
 fn _ipv4_pack<'py>(
     py: Python<'py>,
     fields: Fields<'py>,
+    opts: &Bound<'py, PyBytes>,
     data: &Bound<'py, PyBytes>,
 ) -> PyResult<(Bound<'py, PyBytes>, u16, u16)> {
     let mut packet = octetrail::ipv4::Packet {
         header: header(fields),
+        opts: opts.as_bytes(),
         data: data.as_bytes(),
     };
     let raw = packet.to_bytes().map_err(error)?;
@@ -99,10 +112,17 @@ fn _ipv4_pack<'py>(
     ))
 }
 
+#[pyfunction]
+fn _ipv4_transport_checksum(fields: Fields<'_>, data: &Bound<'_, PyBytes>) -> PyResult<u16> {
+    let h = header(fields);
+    octetrail::ipv4::transport_checksum(h.src, h.dst, h.protocol, data.as_bytes()).map_err(error)
+}
+
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(_ipv4_unpack, module)?)?;
     module.add_function(wrap_pyfunction!(_ipv4_header, module)?)?;
     module.add_function(wrap_pyfunction!(_ipv4_pack, module)?)?;
+    module.add_function(wrap_pyfunction!(_ipv4_transport_checksum, module)?)?;
     module.add("Ipv4UnpackError", module.py().get_type::<Ipv4UnpackError>())?;
     Ok(())
 }

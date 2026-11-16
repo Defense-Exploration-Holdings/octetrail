@@ -50,7 +50,8 @@ mutable buffer types, ignored keyword fields with positional input, short MAC
 padding, and deferred `PackError` on invalid type values. These are scope gaps,
 not established differences in OctetRail, and do not run against OctetRail.
 
-Nested packets and protocol dispatch, `unpack()`/`pack()`/`pack_hdr()`, type
+Nested IPv4/TCP/UDP composition, `unpack()` and `pack_hdr()` are covered
+separately by the [composition tests](composition.md). Generic `pack()`, type
 registries, constants, arbitrary packet attributes, buffer protocols, 802.3/LLC,
 VLAN, MPLS, padding/FCS interpretation, and downstream applications are outside
 these comparisons. Default construction is measured separately: dpkt exposes

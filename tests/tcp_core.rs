@@ -83,21 +83,26 @@ fn offsets_below_five_are_invalid() {
 }
 
 #[test]
-fn options_are_explicitly_unsupported() {
+fn options_are_borrowed_and_length_checked() {
     let mut raw = LITERAL.to_vec();
     raw[12] = 6 << 4;
-    raw.splice(20..20, [1, 1, 1, 1]); // Ordinary NOP options, never interpreted.
-    assert_eq!(
-        Segment::parse(&raw, Limits::default()).unwrap_err(),
-        Error::OptionsUnsupported { words: 6 }
-    );
-    let header = Header {
-        off: 6,
-        ..Header::default()
+    raw.splice(20..20, [1, 1, 1, 1]);
+    let segment = Segment::parse(&raw, Limits::default()).unwrap();
+    assert_eq!(segment.opts, &[1, 1, 1, 1]);
+    assert_eq!(segment.opts.as_ptr(), raw[20..].as_ptr());
+    assert_eq!(segment.to_bytes(Limits::default()).unwrap(), raw);
+    assert!(matches!(
+        Segment::parse(&raw[..23], Limits::default()),
+        Err(Error::TruncatedOptions { required: 24, .. })
+    ));
+    let short = Segment {
+        header: segment.header,
+        opts: &[],
+        data: &[],
     };
     assert_eq!(
-        header.to_bytes().unwrap_err(),
-        Error::OptionsUnsupported { words: 6 }
+        short.to_bytes(Limits::default()).unwrap_err(),
+        Error::InvalidOptionsLength
     );
 }
 
@@ -121,6 +126,7 @@ fn checksum_zero_and_nonzero_are_never_recomputed() {
                 checksum,
                 ..Header::default()
             },
+            opts: &[],
             data: b"changed opaque data",
         };
         let raw = segment.to_bytes(Limits::default()).unwrap();
@@ -174,6 +180,7 @@ fn binary_payload_and_repeated_serialization_are_exact() {
     let payload: Vec<u8> = (0..=255).chain([0, 0]).collect();
     let segment = Segment {
         header: Header::default(),
+        opts: &[],
         data: &payload,
     };
     let first = segment.to_bytes(Limits::default()).unwrap();

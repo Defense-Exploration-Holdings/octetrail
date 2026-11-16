@@ -176,17 +176,10 @@ def cases():
     option_raw = encode(option_values, data, opts)
     unsupported = {"outcome": "error", "phase": "construct", "error": "NotImplementedError"}
     add(
-        "excluded_options",
+        "opaque_options",
         "parse",
-        None,
+        success(option_values, option_raw, data, opts),
         hex=option_raw.hex(),
-        status="difference",
-        reason="Only a fixed 20-byte header is implemented; option headers are rejected.",
-        expected_versions={
-            "1.9.6": success(option_values, option_raw, data, opts),
-            "1.9.8": success(option_values, option_raw, data, opts),
-            "octetrail": unsupported,
-        },
     )
     for name, bit in (("nonce", 1), ("reserved", 8)):
         wire = raw[:12] + bytes((0x50 | bit,)) + raw[13:]

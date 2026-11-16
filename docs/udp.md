@@ -3,7 +3,9 @@
 `octetrail.udp.UDP` parses and serializes the fixed eight-byte UDP header with
 an opaque owned bytes payload. The Rust API is
 `octetrail::udp::{Header, Datagram, Limits}`. These APIs operate only on supplied
-buffers. They perform no network operation or application-protocol dispatch.
+buffers. They perform no network operation or application-protocol dispatch. The enclosing
+[IPv4 composition API](composition.md) can fill a zero UDP checksum; it still
+does not infer or update the stored `ulen` field.
 
 ```python
 from octetrail import udp

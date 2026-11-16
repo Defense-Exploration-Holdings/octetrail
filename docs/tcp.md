@@ -1,7 +1,6 @@
-# TCP base headers
+# TCP headers with opaque options
 
-`octetrail.tcp.TCP` reads and writes an offline fixed 20-byte TCP header followed
-by opaque `bytes`. The native Rust core borrows the input payload; the Python
+`octetrail.tcp.TCP` reads and writes an offline 20-byte TCP base header, 0..40 option bytes and an opaque payload. The native Rust core borrows the input payload; the Python
 interface returns owned bytes. This API performs no network operation.
 
 ```python
@@ -17,8 +16,8 @@ assert len(parsed) == 20 + len(parsed.data)
 ```
 
 The checksum is caller-supplied. Its value, including zero, is preserved exactly
-when other fields or the payload change. It is never computed or validated.
-There is no IPv4 integration or pseudo-header checksum automation.
+when other fields or the payload change. It is not automatically validated. Standalone TCP serialization never computes
+it. The [IPv4 composition path](composition.md) can fill a zero sum.
 
 ## Supported fields and operations
 
@@ -30,15 +29,15 @@ arguments and unknown constructor keywords raise `TypeError`.
 | --- | --- | --- |
 | `sport`, `dport` | Unsigned 16 bits each | `0xdead`, `0` |
 | `seq`, `ack` | Unsigned 32 bits each | `0xdeadbeef`, `0` |
-| `off` | Four bits, in 32-bit words | `5`; only this value is supported |
+| `off` | Four bits, in 32-bit words | `5`; values 5..15 are supported |
 | `flags` | Shared eight-bit flag surface | `TH_SYN` (`2`) |
 | `win` | Unsigned 16 bits | `65535` |
 | `sum`, `urp` | Unsigned 16 bits each | `0`, `0` |
-| `opts` | Empty bytes only | `b''` |
+| `opts` | Opaque bytes, at most 40 | `b''` |
 | `data` | Opaque bytes | `b''` |
 
 All fields are mutable. `bytes(segment)` serializes the fixed header and exact
-payload with no padding. `len(segment)` returns 20 plus payload length for the
+payload with no padding. `len(segment)` returns 20 plus options and payload length for the
 supported fields. `pack_hdr()` returns only the 20-byte header. `unpack(bytes)`
 replaces fields only after a complete supported header is validated. Repeated
 serialization does not change fields or checksum values.
@@ -52,14 +51,13 @@ not the full upstream inventory.
 
 An explicitly supplied buffer shorter than 20 bytes raises `NeedData`, a subclass
 of `UnpackError` and `Error`. A header whose data offset is below five raises
-`UnpackError`. Options (offset greater than five) and nonzero nonce/reserved bits
+`UnpackError`. Incomplete option bytes raise `NeedData`; nonzero nonce/reserved bits
 raise `NotImplementedError`. The error messages are not a compatibility promise.
 
 For the scalar fields in the table, non-integers and out-of-range values raise
 `PackError` when serialized, with field validation deferred until that call.
-`PackError` inherits from `Error`. Assigning an in-range offset other than five
-is accepted as a field assignment and raises `NotImplementedError` on packing.
-Nonempty options raise `NotImplementedError`. Non-bytes input, payload or option
+`PackError` inherits from `Error`. Option bytes must match the assigned data
+offset; mismatches raise `PackError`, a deliberate stricter packing rule. Non-bytes input, payload or option
 objects raise `TypeError` when used by their corresponding operations.
 
 The default complete-segment limit is 16 MiB, including the 20-byte header.
@@ -74,10 +72,10 @@ The required flag surface is the eight bits shared by dpkt 1.9.6 and 1.9.8.
 In 1.9.8 the nonce bit is exposed as a ninth flag; in 1.9.6 it remains in a
 separate internal header byte. This implementation rejects that bit instead of
 claiming equivalence across those different interfaces. Nine-bit flags, reserved
-bits, options and option parsers, implicit payload conversion, protocol objects,
+bits, option-value parsers, implicit payload conversion, application protocols,
 generic `dpkt.Packet` methods, full constant inventories, arbitrary subclass
 behavior, connection state, retransmission and stream reassembly are excluded.
-Ethernet and IP dispatch into TCP are not implemented by this module.
+Ethernet/IPv4 dispatch is documented in the composition guide.
 
 ## Reproduce the comparisons
 

@@ -67,7 +67,7 @@ def main():
     assert baselines[0]["results"] == baselines[1]["results"]
     actuals = []
     for python in args.python:
-        actual = probe(python, "octetrail", "0.1.0", matching)
+        actual = probe(python, "octetrail", "0.2.0", matching)
         validate(actual, matching)
         for case in matching:
             assert actual["results"][case["id"]] == baselines[0]["results"][case["id"]]

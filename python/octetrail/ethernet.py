@@ -1,14 +1,12 @@
-"""Opaque Ethernet II fields backed by the native parser and serializer.
+"""Bounded Ethernet II frames with IPv4 object composition.
 
-This subset has no higher-layer dispatch, 802.3, VLAN, MPLS, padding or FCS API.
-Payload bytes are preserved verbatim, including any caller-supplied trailing
-bytes. The complete frame is limited to 16 MiB before native copying/allocation.
+Unknown/undecodable payloads stay bytes. No 802.3, VLAN, MPLS or FCS is supplied.
 """
 
 import operator
 
-from . import _native
-from .errors import NeedData, PackError
+from . import _native, ip
+from .errors import NeedData, PackError, UnpackError
 
 ETH_HDR_LEN = 14
 ETH_TYPE_IP = 0x0800
@@ -17,12 +15,12 @@ LimitError = _native.PacketLimitError
 
 
 class Ethernet:
-    """Mutable dst/src/type/data fields for the declared opaque Ethernet II API.
+    """Mutable dst/src/type/data fields for the bounded Ethernet II API.
 
     Use one positional bytes buffer, or keyword dst/src/type/data fields. Buffer
     construction ignores field keywords, as dpkt does. Addresses retain their
-    assigned values; packing pads/truncates byte strings to six bytes. Known
-    network-layer EtherTypes remain opaque and create no ip/arp/etc. attributes.
+    assigned values; packing pads/truncates byte strings to six bytes. IPv4
+    payloads are decoded into IP objects with an ip alias; other types stay bytes.
     Unsupported framing is rejected with NotImplementedError, not reinterpreted.
     """
 
@@ -39,6 +37,10 @@ class Ethernet:
         self.src = kwargs.get("src", b"")
         self.type = kwargs.get("type", ETH_TYPE_IP)
         self.data = kwargs.get("data", b"")
+        if isinstance(self.data, bytes):
+            if len(self.data) > DEFAULT_MAX_FRAME_BYTES - ETH_HDR_LEN:
+                raise LimitError("Ethernet input exceeds frame limit")
+            self._decode_data()
 
     def unpack(self, buf):
         """Replace fields only after a complete supported frame is validated."""
@@ -49,6 +51,16 @@ class Ethernet:
         except _native.TruncatedError as error:
             raise NeedData(str(error)) from None
         self.dst, self.src, self.type, self.data = fields
+        self._decode_data()
+
+    def _decode_data(self):
+        if self.type == ETH_TYPE_IP:
+            try:
+                decoded = ip.IP._from_ethernet(self.data)
+            except (UnpackError, NotImplementedError):
+                pass
+            else:
+                self.data = self.ip = decoded
 
     def _header_args(self):
         if not isinstance(self.dst, bytes) or not isinstance(self.src, bytes):
@@ -59,7 +71,7 @@ class Ethernet:
             raise PackError("required argument is not an integer") from None
         if not 0 <= ethertype <= 0xFFFF:
             raise PackError("'H' format requires 0 <= number <= 65535")
-        return self.dst, self.src, ethertype
+        return self.dst, self.src, ETH_TYPE_IP if isinstance(self.data, ip.IP) else ethertype
 
     def pack_hdr(self):
         return _native._ethernet_header(*self._header_args())
@@ -67,8 +79,8 @@ class Ethernet:
     def __bytes__(self):
         fields = self._header_args()
         payload = self.data
-        if not isinstance(payload, (bytes, bytearray, memoryview)):
-            raise TypeError("opaque Ethernet payload requires bytes, bytearray or memoryview")
+        if not isinstance(payload, (bytes, bytearray, memoryview, ip.IP)):
+            raise TypeError("Ethernet data requires IPv4 or bytes-like data")
         size = payload.nbytes if isinstance(payload, memoryview) else len(payload)
         if size > DEFAULT_MAX_FRAME_BYTES - ETH_HDR_LEN:
             raise LimitError(
@@ -77,4 +89,6 @@ class Ethernet:
         return _native._ethernet_pack(*fields, bytes(payload))
 
     def __len__(self):
+        if not isinstance(self.data, (bytes, bytearray, memoryview, ip.IP)):
+            raise TypeError("Ethernet data requires IPv4 or bytes-like data")
         return ETH_HDR_LEN + len(self.data)

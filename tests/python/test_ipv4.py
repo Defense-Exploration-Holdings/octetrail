@@ -96,12 +96,14 @@ class IPv4Tests(unittest.TestCase):
         with self.assertRaises(UnpackError):
             bytes(ip.IP(hl=4))
 
-    def test_options_version_and_offload_length_are_explicitly_unsupported(self):
-        for first in (0x46, 0x65):
+    def test_bounded_options_version_and_offload_policy(self):
+        for first in (0x65,):
             with self.subTest(first=first), self.assertRaises(NotImplementedError):
                 ip.IP(bytes([first]) + LITERAL[1:])
-        with self.assertRaises(NotImplementedError):
+        with self.assertRaises(PackError):
             bytes(ip.IP(opts=b"\0" * 4))
+        packet = ip.IP(hl=6, opts=b"\x01" * 4, data=b"rail")
+        self.assertEqual(ip.IP(bytes(packet)).opts, b"\x01" * 4)
         with self.assertRaises(NotImplementedError):
             ip.IP(LITERAL[:2] + b"\0\0" + LITERAL[4:])
         with self.assertRaises(NotImplementedError):

@@ -170,7 +170,9 @@ class GateTests(unittest.TestCase):
                 check=True,
                 capture_output=True,
             )
-            self.assertEqual(output.read_text(), "publish=false\nversion=0.1.0\n")
+            self.assertEqual(
+                output.read_text(), f"publish=false\nversion={R.source_version(ROOT)}\n"
+            )
 
 
 class HistoryTests(unittest.TestCase):

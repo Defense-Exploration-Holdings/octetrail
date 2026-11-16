@@ -1,8 +1,7 @@
-"""Fixed 20-byte TCP headers with opaque bytes and caller-supplied checksums.
+"""Bounded TCP segments with opaque options and application payload bytes.
 
-Only offset 5, empty options and the eight flags shared by dpkt 1.9.6/1.9.8
-are supported. No network operation, IP integration or checksum automation is
-provided. The complete offline segment is limited to 16 MiB when parsed/packed.
+Standalone serialization retains the caller checksum. The enclosing IPv4 API
+can fill a zero transport checksum while recalculating its own zero checksum.
 """
 
 import operator
@@ -37,11 +36,11 @@ _FIELDS = (
 
 
 class TCP:
-    """Mutable base-header fields, opts=b'' and data as opaque bytes.
+    """Mutable header fields, opaque options and application bytes.
 
     Construct with field keywords or one positional bytes buffer. A positional
     buffer ignores field keywords, as the references do. Field range/type errors
-    are deferred until serialization. Options and nonce/reserved bits are outside
+    are deferred until serialization. Options of 0..40 bytes must match off. Nonce/reserved bits are outside
     this API. A supplied checksum, including zero, is preserved unchanged.
     """
 
@@ -64,14 +63,14 @@ class TCP:
         if not isinstance(buf, bytes):
             raise TypeError("TCP unpack requires bytes")
         try:
-            fields, payload = _native._tcp_unpack(buf)
+            fields, opts, payload = _native._tcp_unpack(buf)
         except _native.TruncatedError as error:
             raise NeedData(str(error)) from None
         except _native.TCPHeaderError as error:
             raise UnpackError(str(error)) from None
         for (name, _, _), value in zip(_FIELDS, fields, strict=True):
             setattr(self, name, value)
-        self.opts = b""
+        self.opts = opts
         self.data = payload
 
     def _header_args(self):
@@ -84,31 +83,32 @@ class TCP:
             if not 0 <= value < 1 << bits:
                 raise PackError(f"{name} requires an unsigned {bits}-bit integer")
             fields.append(value)
-        if fields[4] != 5:
-            raise NotImplementedError("only TCP data offset 5 is supported")
-        self._check_options()
+        if fields[4] < 5:
+            raise PackError("TCP offset must be at least 5")
         return tuple(fields)
 
     def _check_options(self):
         if not isinstance(self.opts, bytes):
             raise TypeError("TCP opts requires bytes")
-        if self.opts:
-            raise NotImplementedError("TCP options are unsupported")
+        if len(self.opts) > 40 or len(self.opts) != 4 * operator.index(self.off) - TCP_HDR_LEN:
+            raise PackError("TCP options must match off and fit 40 bytes")
 
     def pack_hdr(self):
         return _native._tcp_header(self._header_args())
 
     def __bytes__(self):
         fields = self._header_args()
-        if not isinstance(self.data, bytes):
-            raise TypeError("opaque TCP payload requires bytes")
-        size = len(self.data) + TCP_HDR_LEN
-        if size > DEFAULT_MAX_SEGMENT_BYTES:
-            raise LimitError(f"TCP segment length {size} exceeds limit {DEFAULT_MAX_SEGMENT_BYTES}")
-        return _native._tcp_pack(fields, self.data)
-
-    def __len__(self):
         self._check_options()
         if not isinstance(self.data, bytes):
             raise TypeError("opaque TCP payload requires bytes")
-        return TCP_HDR_LEN + len(self.data)
+        size = len(self.data) + len(self.opts) + TCP_HDR_LEN
+        if size > DEFAULT_MAX_SEGMENT_BYTES:
+            raise LimitError(f"TCP segment length {size} exceeds limit {DEFAULT_MAX_SEGMENT_BYTES}")
+        return _native._tcp_pack(fields, self.opts, self.data)
+
+    def __len__(self):
+        if not isinstance(self.opts, bytes):
+            raise TypeError("TCP opts requires bytes")
+        if not isinstance(self.data, bytes):
+            raise TypeError("opaque TCP payload requires bytes")
+        return TCP_HDR_LEN + len(self.opts) + len(self.data)

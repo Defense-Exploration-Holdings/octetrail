@@ -137,17 +137,18 @@ class TCPTests(unittest.TestCase):
         self.assertNotIsInstance(caught.exception, NeedData)
         self.assertEqual(bytes(packet), literal())
 
-    def test_options_and_nonce_reserved_bits_are_explicitly_unsupported(self):
+    def test_bounded_options_and_nonce_reserved_scope(self):
         option_raw = literal()[:12] + b"\x60" + literal()[13:20] + b"\x01" * 4 + literal()[20:]
+        self.assertEqual(bytes(tcp.TCP(option_raw)), option_raw)
+        self.assertEqual(tcp.TCP(option_raw).opts, b"\x01" * 4)
         for raw in (
-            option_raw,
             literal()[:12] + b"\x51" + literal()[13:],
             literal()[:12] + b"\x58" + literal()[13:],
         ):
             with self.subTest(raw=raw), self.assertRaises(NotImplementedError):
                 tcp.TCP(raw)
         for fields in ({"off": 6}, {"opts": b"\x01" * 4}):
-            with self.subTest(fields=fields), self.assertRaises(NotImplementedError):
+            with self.subTest(fields=fields), self.assertRaises(PackError):
                 bytes(tcp.TCP(**fields))
         with self.assertRaises(PackError):
             bytes(tcp.TCP(flags=0x100))

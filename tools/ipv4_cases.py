@@ -169,8 +169,8 @@ def cases():
         updates=[{"offset": 24, "sum": 0}, {"offset": 8, "sum": 0}],
     )
     result[-1]["status"] = "version_difference"
+    add("opaque_options", dict(literal_state, hl=6, opts="01010101", len=28), operation="parse")
     limits = [
-        ("options", dict(literal_state, hl=6, opts="00000000", len=28), "NotImplementedError"),
         ("version", dict(literal_state, v=6), "NotImplementedError"),
         ("zero_length", dict(literal_state, len=0), "NotImplementedError"),
         ("short_total_length", dict(literal_state, len=19), "ValueError"),

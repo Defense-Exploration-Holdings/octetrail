@@ -15,13 +15,20 @@ Packet Block subset, section-local interface clocks and explicit resource limits
 The [classic-PCAP writer](docs/pcap-writer.md) emits validated offline records,
 with explicit rounding and I/O behavior. The [PCAPNG writer](docs/pcapng-writer.md)
 supports one section, one interface and Enhanced Packet Blocks with bounded
-metadata options. Modified pcap, protocol decoding and a `dpkt` import layer are not
+metadata options. Modified pcap, broad protocol decoding and a `dpkt` import layer are not
 implemented. The [compatibility contract](docs/compatibility.md) tracks these
 separately from import names, distribution metadata and downstream behavior.
 The [explicit capture provider](docs/capture-compatibility.md) supplies the
 covered Python reader/writer subset without changing normal `dpkt` imports.
 The [UniversalReader guide](docs/universal-reader.md) describes measured
 1.9.8-style format selection over the native readers.
+
+Ethernet II, IPv4 and opaque TCP/UDP objects can be composed and decoded offline.
+See the [composition guide](docs/composition.md) for dispatch, options, checksum
+update rules, resource bounds and measured compatibility limits.
+
+See the [0.2.0 release notes](docs/release-notes.md) for the composition changes
+and their compatibility limits.
 
 ## Use the classic-pcap reader
 

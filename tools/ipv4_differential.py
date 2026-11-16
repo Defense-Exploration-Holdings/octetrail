@@ -77,7 +77,7 @@ def main():
         validate(report, payload, report["version"])
     products = []
     for python in args.python:
-        report = probe(python, "octetrail", "0.1.0", payload)
+        report = probe(python, "octetrail", "0.2.0", payload)
         validate(report, payload, "1.9.8", True)
         products.append(report)
     common = [c for c in payload if c["status"] == "matching"]
@@ -107,7 +107,7 @@ def main():
     print(
         json.dumps(
             {
-                "scope": "fixed IPv4 header, opaque bytes and ordinary header checksums",
+                "scope": "IPv4 base header, opaque options/bytes and ordinary header checksums",
                 "declared_cases": len(payload),
                 "common_equal_cases": len(common),
                 "version_difference_cases": len(differences),

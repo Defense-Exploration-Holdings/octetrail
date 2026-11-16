@@ -1,4 +1,4 @@
-//! Fixed IPv4 headers and opaque datagram payloads, without protocol dispatch.
+//! Bounded IPv4 headers, opaque options and native checksum operations.
 
 use std::fmt;
 
@@ -10,7 +10,8 @@ pub enum Error {
     Truncated { available: usize, required: usize },
     InvalidHeaderLength,
     UnsupportedVersion(u8),
-    OptionsUnsupported,
+    InvalidOptionsLength,
+    UnsupportedTransport(u8),
     OffloadLengthUnsupported,
     InvalidTotalLength(u16),
     TooLarge,
@@ -28,9 +29,12 @@ impl fmt::Display for Error {
             }
             Self::InvalidHeaderLength => write!(f, "invalid header length"),
             Self::UnsupportedVersion(v) => write!(f, "unsupported IPv4 version {v}"),
-            Self::OptionsUnsupported => write!(f, "IPv4 options are not supported"),
+            Self::InvalidOptionsLength => write!(f, "IPv4 options do not match header length"),
+            Self::UnsupportedTransport(p) => write!(f, "unsupported checksum protocol {p}"),
             Self::OffloadLengthUnsupported => write!(f, "zero IPv4 total length is unsupported"),
-            Self::InvalidTotalLength(n) => write!(f, "IPv4 total length {n} is below 20"),
+            Self::InvalidTotalLength(n) => {
+                write!(f, "IPv4 total length {n} is below header length")
+            }
             Self::TooLarge => write!(f, "IPv4 datagram exceeds 65535 bytes"),
             Self::Allocation => write!(f, "cannot allocate IPv4 datagram"),
         }
@@ -90,8 +94,7 @@ impl Header {
         }
         match self.version_ihl & 15 {
             0..=4 => Err(Error::InvalidHeaderLength),
-            5 => Ok(()),
-            _ => Err(Error::OptionsUnsupported),
+            _ => Ok(()),
         }
     }
 
@@ -142,6 +145,7 @@ impl Header {
 #[derive(Debug, Eq, PartialEq)]
 pub struct Packet<'a> {
     pub header: Header,
+    pub opts: &'a [u8],
     pub data: &'a [u8],
 }
 
@@ -153,7 +157,14 @@ impl<'a> Packet<'a> {
         if length == 0 {
             return Err(Error::OffloadLengthUnsupported);
         }
-        if length < HEADER_LEN {
+        let header_len = usize::from(header.version_ihl & 15) * 4;
+        if bytes.len() < header_len {
+            return Err(Error::Truncated {
+                available: bytes.len(),
+                required: header_len,
+            });
+        }
+        if length < header_len {
             return Err(Error::InvalidTotalLength(header.total_length));
         }
         if length > bytes.len() {
@@ -164,14 +175,20 @@ impl<'a> Packet<'a> {
         }
         Ok(Self {
             header,
-            data: &bytes[HEADER_LEN..length],
+            opts: &bytes[HEADER_LEN..header_len],
+            data: &bytes[header_len..length],
         })
     }
 
     /// Follow dpkt 1.9.8's zero-checksum update rule, preserving explicit sums.
     pub fn to_bytes(&mut self) -> Result<Vec<u8>, Error> {
+        self.header.validate_layout()?;
+        if self.opts.len() != usize::from(self.header.version_ihl & 15) * 4 - HEADER_LEN {
+            return Err(Error::InvalidOptionsLength);
+        }
         let length = HEADER_LEN
-            .checked_add(self.data.len())
+            .checked_add(self.opts.len())
+            .and_then(|n| n.checked_add(self.data.len()))
             .ok_or(Error::TooLarge)?;
         if length > MAX_TOTAL_LEN {
             return Err(Error::TooLarge);
@@ -179,7 +196,9 @@ impl<'a> Packet<'a> {
         self.header.validate_layout()?;
         if self.header.checksum == 0 {
             self.header.total_length = length as u16;
-            self.header.checksum = checksum(&self.header.to_bytes()?);
+            let sum =
+                u32::from(!checksum(&self.header.to_bytes()?)) + u32::from(!checksum(self.opts));
+            self.header.checksum = finish_checksum(sum);
         }
         let raw = self.header.to_bytes()?;
         let mut output = Vec::new();
@@ -187,7 +206,41 @@ impl<'a> Packet<'a> {
             .try_reserve_exact(length)
             .map_err(|_| Error::Allocation)?;
         output.extend_from_slice(&raw);
+        output.extend_from_slice(self.opts);
         output.extend_from_slice(self.data);
         Ok(output)
     }
+}
+
+/// Combine even-aligned checksum components without allocating a joined buffer.
+fn finish_checksum(mut sum: u32) -> u16 {
+    while sum >> 16 != 0 {
+        sum = (sum & 0xffff) + (sum >> 16);
+    }
+    !(sum as u16)
+}
+
+/// IPv4 TCP/UDP pseudoheader checksum. Caller supplies a zeroed transport sum.
+/// Fragment selection and the zero-IP-checksum update policy belong to the facade.
+pub fn transport_checksum(
+    src: [u8; 4],
+    dst: [u8; 4],
+    protocol: u8,
+    data: &[u8],
+) -> Result<u16, Error> {
+    if !matches!(protocol, 6 | 17) {
+        return Err(Error::UnsupportedTransport(protocol));
+    }
+    let length = u16::try_from(data.len()).map_err(|_| Error::TooLarge)?;
+    let mut pseudo = [0u8; 12];
+    pseudo[..4].copy_from_slice(&src);
+    pseudo[4..8].copy_from_slice(&dst);
+    pseudo[9] = protocol;
+    pseudo[10..].copy_from_slice(&length.to_be_bytes());
+    let sum = finish_checksum(u32::from(!checksum(&pseudo)) + u32::from(!checksum(data)));
+    Ok(if protocol == 17 && sum == 0 {
+        u16::MAX
+    } else {
+        sum
+    })
 }

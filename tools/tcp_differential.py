@@ -68,7 +68,7 @@ def main():
     payload = cases()
     matching = [case for case in payload if case["status"] == "matching"]
     differences = [case for case in payload if case["status"] == "difference"]
-    require(len(matching) > 100 and len(differences) == 3, "Unexpected TCP corpus partition")
+    require(len(matching) > 100 and len(differences) == 2, "Unexpected TCP corpus partition")
     require(
         len({case["id"] for case in payload}) == len(payload),
         "TCP corpus has duplicate case identifiers",
@@ -84,7 +84,7 @@ def main():
             baselines[0]["results"][case["id"]] == baselines[1]["results"][case["id"]],
             f"TCP oracle observations disagree for {case['id']}",
         )
-    actuals = [probe(python, "octetrail", "0.1.0", payload) for python in args.python]
+    actuals = [probe(python, "octetrail", "0.2.0", payload) for python in args.python]
     for report in actuals:
         validate(report, payload)
         for case in matching:
@@ -95,7 +95,7 @@ def main():
     print(
         json.dumps(
             {
-                "scope": "TCP fixed 20-byte header, shared eight flags, bytes payload and caller-supplied checksum",
+                "scope": "TCP base header, opaque options, shared eight flags, bytes payload and caller-supplied checksum",
                 "declared_cases": len(payload),
                 "matching_cases_per_provider": len(matching),
                 "declared_differences_per_provider": len(differences),

@@ -1,4 +1,4 @@
-//! Fixed 20-byte TCP headers and opaque payloads, without checksum automation.
+//! Bounded TCP headers with opaque options and payloads.
 
 use std::fmt;
 
@@ -23,7 +23,8 @@ impl Default for Limits {
 pub enum Error {
     TruncatedHeader { available: usize },
     InvalidDataOffset { words: u8 },
-    OptionsUnsupported { words: u8 },
+    InvalidOptionsLength,
+    TruncatedOptions { available: usize, required: usize },
     ReservedBitsUnsupported { bits: u8 },
     SegmentLimit { length: usize, limit: u32 },
     LengthOverflow,
@@ -37,9 +38,11 @@ impl fmt::Display for Error {
                 write!(f, "got {available}, {HEADER_LEN} needed at least")
             }
             Self::InvalidDataOffset { .. } => write!(f, "invalid header length"),
-            Self::OptionsUnsupported { words } => {
-                write!(f, "TCP options are unsupported (data offset {words})")
-            }
+            Self::InvalidOptionsLength => write!(f, "TCP options do not match data offset"),
+            Self::TruncatedOptions {
+                available,
+                required,
+            } => write!(f, "got {available}, {required} needed at least"),
             Self::ReservedBitsUnsupported { bits } => {
                 write!(f, "TCP reserved/nonce bits are unsupported (0x{bits:x})")
             }
@@ -55,10 +58,8 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {}
 
 fn check_offset(words: u8) -> Result<(), Error> {
-    if words < 5 {
+    if !(5..=15).contains(&words) {
         Err(Error::InvalidDataOffset { words })
-    } else if words != 5 {
-        Err(Error::OptionsUnsupported { words })
     } else {
         Ok(())
     }
@@ -151,6 +152,7 @@ impl Header {
 #[derive(Debug, Eq, PartialEq)]
 pub struct Segment<'a> {
     pub header: Header,
+    pub opts: &'a [u8],
     pub data: &'a [u8],
 }
 
@@ -162,16 +164,29 @@ impl<'a> Segment<'a> {
             });
         }
         check_length(bytes.len(), limits)?;
+        let header = Header::parse(bytes)?;
+        let header_len = usize::from(header.off) * 4;
+        if bytes.len() < header_len {
+            return Err(Error::TruncatedOptions {
+                available: bytes.len(),
+                required: header_len,
+            });
+        }
         Ok(Self {
-            header: Header::parse(bytes)?,
-            data: &bytes[HEADER_LEN..],
+            header,
+            opts: &bytes[HEADER_LEN..header_len],
+            data: &bytes[header_len..],
         })
     }
 
     pub fn to_bytes(&self, limits: Limits) -> Result<Vec<u8>, Error> {
         let header = self.header.to_bytes()?;
+        if self.opts.len() != usize::from(self.header.off) * 4 - HEADER_LEN {
+            return Err(Error::InvalidOptionsLength);
+        }
         let length = HEADER_LEN
-            .checked_add(self.data.len())
+            .checked_add(self.opts.len())
+            .and_then(|n| n.checked_add(self.data.len()))
             .ok_or(Error::LengthOverflow)?;
         check_length(length, limits)?;
         let mut output = Vec::new();
@@ -179,6 +194,7 @@ impl<'a> Segment<'a> {
             .try_reserve_exact(length)
             .map_err(|_| Error::Allocation)?;
         output.extend_from_slice(&header);
+        output.extend_from_slice(self.opts);
         output.extend_from_slice(self.data);
         Ok(output)
     }

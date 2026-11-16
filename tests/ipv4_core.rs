@@ -44,6 +44,7 @@ fn zero_sum_updates_length_checksum_and_emits_literal() {
             total_length: 20,
             ..Header::parse(&HEADER).unwrap()
         },
+        opts: &[],
         data: b"rail",
     };
     assert_eq!(p.to_bytes().unwrap(), literal());
@@ -81,7 +82,6 @@ fn all_short_header_lengths_are_truncation() {
 #[test]
 fn options_version_and_too_small_ihl_are_distinct() {
     for (first, error) in [
-        (0x46, Error::OptionsUnsupported),
         (0x65, Error::UnsupportedVersion(6)),
         (0x44, Error::InvalidHeaderLength),
     ] {
@@ -130,6 +130,7 @@ fn checksum_is_not_implicitly_validated_on_parse() {
 fn default_header_and_valid_zero_checksum_are_stable() {
     let mut p = Packet {
         header: Header::default(),
+        opts: &[],
         data: b"",
     };
     assert_eq!(
@@ -149,6 +150,7 @@ fn maximum_datagram_bound_is_enforced_before_output_allocation() {
     let payload = vec![b'x'; 65515];
     let mut p = Packet {
         header: Header::default(),
+        opts: &[],
         data: &payload,
     };
     assert_eq!(p.to_bytes().unwrap().len(), 65535);
@@ -156,4 +158,43 @@ fn maximum_datagram_bound_is_enforced_before_output_allocation() {
     let too_large = vec![b'x'; 65516];
     p.data = &too_large;
     assert_eq!(p.to_bytes().unwrap_err(), Error::TooLarge);
+}
+
+#[test]
+fn options_are_borrowed_checked_and_included_in_checksum() {
+    let mut p = Packet {
+        header: Header {
+            version_ihl: 0x46,
+            ..Header::default()
+        },
+        opts: &[1, 1, 1, 1],
+        data: b"rail",
+    };
+    let raw = p.to_bytes().unwrap();
+    assert_eq!(raw.len(), 28);
+    assert_eq!(checksum(&raw[..24]), 0);
+    let parsed = Packet::parse(&raw).unwrap();
+    assert_eq!(parsed.opts, &[1, 1, 1, 1]);
+    assert_eq!(parsed.opts.as_ptr(), raw[20..].as_ptr());
+    assert_eq!(parsed.data, b"rail");
+    assert!(matches!(
+        Packet::parse(&raw[..23]),
+        Err(Error::Truncated { required: 24, .. })
+    ));
+    p.opts = &[];
+    assert_eq!(p.to_bytes().unwrap_err(), Error::InvalidOptionsLength);
+}
+
+#[test]
+fn pseudoheader_known_udp_words_and_length_bound() {
+    // Independent network-word sum of the pseudoheader, UDP fields and "ok".
+    let data = [0x12, 0x34, 0x56, 0x78, 0, 10, 0, 0, b'o', b'k'];
+    assert_eq!(
+        octetrail::ipv4::transport_checksum([192, 0, 2, 1], [198, 51, 100, 2], 17, &data).unwrap(),
+        0x3b8b
+    );
+    assert_eq!(
+        octetrail::ipv4::transport_checksum([0; 4], [0; 4], 6, &vec![0; 65536]).unwrap_err(),
+        Error::TooLarge
+    );
 }
