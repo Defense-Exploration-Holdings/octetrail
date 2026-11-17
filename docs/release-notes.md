@@ -32,6 +32,11 @@ HTTP now parses and packs the way dpkt 1.9.8 does:
   limits, `http.ParseLimitError`, `http.LimitError` and the `MAX_*` constants are
   removed.
 
+New: `octetrail.Packet`, dpkt's base class for header classes, with
+`__hdr__`, `__bit_fields__`, `repr()`, `pprint()` and layer lookup, and the
+`hexdump`, `in_cksum`, `in_cksum_add` and `in_cksum_done` helpers
+([Packet guide](packet.md)).
+
 ## 0.3.1
 
 First PyPI upload of the 0.3.0 changes. The code is the same as 0.3.0, which

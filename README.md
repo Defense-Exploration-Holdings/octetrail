@@ -32,6 +32,8 @@ The [DNS module](docs/dns.md) parses and packs messages and common record fields
 the way dpkt 1.9.8 does, without changing transport payloads or performing lookups.
 The [HTTP module](docs/http.md) parses and packs HTTP/1.x requests and responses
 the way dpkt 1.9.8 does, without stream reassembly.
+The [Packet base class](docs/packet.md) is dpkt's, for writing your own header
+classes, with the checksum and hexdump helpers.
 The [passive TLS subset](docs/tls.md) adds explicit record framing and bounded
 ServerHello metadata, with other record and handshake data kept opaque.
 
