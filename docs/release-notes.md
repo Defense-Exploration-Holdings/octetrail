@@ -1,5 +1,14 @@
 # Release notes
 
+## 0.4.1
+
+- `Cls in p` no longer raises `TypeError` when the TCP or UDP layer it walks
+  through holds another layer object instead of bytes. `p[Cls]` already worked.
+- Packing an IPv6 packet with a zero TCP or UDP checksum now computes it for a
+  jumbo payload over 65535 bytes too. The pseudo-header carries a 32-bit
+  length, as RFC 8200 and RFC 2675 specify. dpkt 1.9.8 raises `struct.error`
+  here. Checksums of smaller payloads are unchanged.
+
 ## 0.4.0
 
 DNS now parses and packs the way dpkt 1.9.8 does:

@@ -107,7 +107,7 @@ def main():
     assert all(case.get("reason") for case in ineligible)
     corpus = fixtures()
     providers = [("dpkt", "1.9.8", args.oracle_198), ("dpkt", "1.9.6", args.oracle_196)]
-    providers += [("octetrail-test-map", "0.4.0", python) for python in args.python]
+    providers += [("octetrail-test-map", "0.4.1", python) for python in args.python]
     reports, reference = [], None
     with tempfile.TemporaryDirectory(prefix="octetrail-capture-consumer-") as directory:
         paths = {}

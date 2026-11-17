@@ -78,7 +78,9 @@ time.
   `ip6.EXT_HDRS` and takes `p` from the last.
 - When `p` is 6, 17 or 58 and the payload has a `sum` of 0, the checksum is
   computed over the IPv6 pseudo-header and set on the payload. A UDP checksum
-  of 0 is not changed to `0xffff`, as in dpkt. A nonzero `sum` is kept.
+  of 0 is not changed to `0xffff`, as in dpkt. A nonzero `sum` is kept. The
+  pseudo-header carries a 32-bit length, so a jumbo payload over 65535 bytes
+  gets a checksum too, where dpkt raises `struct.error`.
 - `plen` is packed as it is. It is not computed.
 
 `len()` is 40 plus the extension headers and `len(data)`.

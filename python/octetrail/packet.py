@@ -128,10 +128,14 @@ class Packet(metaclass=_MetaPacket):
         raise KeyError(kls)
 
     def __contains__(self, kls):
+        # dpkt returns bool() of the layer, which is always true for a layer
+        # with a header. bool() would call len(), and the TCP and UDP objects
+        # cannot take a length while their data is another layer object.
         try:
-            return bool(self.__getitem__(kls))
+            self.__getitem__(kls)
         except KeyError:
             return False
+        return True
 
     def _create_public_fields(self):
         names = []

@@ -142,7 +142,10 @@ class IP6(Packet):
             and not self.data.sum
         ):
             p = bytes(self.data)
-            s = struct.pack(">16s16sxBH", self.src, self.dst, self.p, len(p))
+            # The RFC 8200 pseudo-header, with a 32-bit length so that jumbo
+            # payloads (RFC 2675) get a checksum too. For payloads up to
+            # 65535 bytes the sum is the same as dpkt's 16-bit form.
+            s = struct.pack(">16s16sI3xB", self.src, self.dst, len(p), self.p)
             self.data.sum = _native._ipv6_checksum(s, p)
         return self.pack_hdr() + hdr_str + bytes(self.data)
 
