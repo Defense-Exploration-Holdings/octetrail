@@ -1,5 +1,44 @@
 # Release notes
 
+## 0.3.0
+
+One stable-ABI wheel (abi3, CPython 3.10 and later) per platform replaces the
+version-specific Linux wheels of 0.2.0: Linux glibc and musl on x86-64 and arm64,
+macOS on x86-64 and arm64, and Windows on x64 and arm64, plus a source
+distribution. Each wheel is tested on its own platform.
+
+New protocol modules, each with a Rust core and a Python interface:
+
+- IPv6 with ordered opaque extension headers and raw IP dispatch
+  ([IPv6 guide](ipv6.md)).
+- DNS messages with bounded name compression ([DNS guide](dns.md)).
+- HTTP/1.0 and HTTP/1.1 requests and responses ([HTTP guide](http.md)).
+- Passive TLS record framing and ServerHello metadata ([TLS guide](tls.md)).
+
+IPv4 and TCP now parse and pack the way dpkt 1.9.8 does:
+
+- IPv4 accepts any version nibble. Only a buffer shorter than 20 bytes
+  (`NeedData`) and an IHL below 5 (`UnpackError`) are rejected. Options and payload
+  are sliced from the bytes present, and the length and checksum are computed on
+  packing only when the checksum is zero.
+- TCP keeps reserved and nonce bits. `off`, `_rsv` and the nine-bit `flags` are
+  views of `_off_flags`. Only a short buffer and a data offset below 5 are
+  rejected, and options are packed as assigned.
+- New: `tcp.parse_opts`, `tcp.tcp_flags_to_str`, `TH_NS` and the `TCP_OPT_*`
+  constants.
+
+Rust API changes:
+
+- `ipv4::Error` no longer has `UnsupportedVersion`, `InvalidOptionsLength`,
+  `OffloadLengthUnsupported` or `InvalidTotalLength`.
+- `tcp::Header` stores `off_flags: u16` with `off()`, `reserved()` and `flags()`
+  accessors, and `to_bytes` no longer returns a `Result`. `tcp::Error` no longer
+  has `InvalidOptionsLength`, `TruncatedOptions` or `ReservedBitsUnsupported`.
+- New `tcp::parse_options`.
+
+This remains an Alpha release for bounded offline processing. Measured
+differences from dpkt are documented in each guide.
+
 ## 0.2.0
 
 Ethernet II parsing now connects IPv4 to TCP or UDP as nested Python objects.
