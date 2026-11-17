@@ -10,6 +10,7 @@ from . import dtp as dtp
 from . import edp as edp
 from . import esp as esp
 from . import gre as gre
+from . import hsrp as hsrp
 from . import http as http
 from . import icmp as icmp
 from . import icmp6 as icmp6
@@ -19,18 +20,21 @@ from . import ipip as ipip
 from . import ipx as ipx
 from . import llc as llc
 from . import loopback as loopback
+from . import ntp as ntp
 from . import ospf as ospf
 from . import packet as packet
 from . import pim as pim
 from . import ppp as ppp
 from . import pppoe as pppoe
 from . import raw as raw
+from . import rip as rip
 from . import sctp as sctp
 from . import sll as sll
 from . import sll2 as sll2
 from . import ssl as ssl
 from . import stp as stp
 from . import tcp as tcp
+from . import tftp as tftp
 from . import udp as udp
 from . import vrrp as vrrp
 from .errors import Error, NeedData, PackError, UnpackError
@@ -64,6 +68,7 @@ __all__.append("ssl")
 __all__.extend(("ipip", "ipx", "llc", "stp"))
 __all__.extend(("icmp", "icmp6"))
 __all__.extend(("igmp", "vrrp"))
+__all__.extend(("hsrp", "ntp", "rip", "tftp"))
 __all__.extend(("cdp", "dtp", "edp"))
 __all__.extend(("ppp", "pppoe"))
 __all__.extend(("ah", "esp"))

@@ -20,6 +20,7 @@ pub mod ipv4;
 pub mod ipv6;
 pub mod pcapng;
 pub mod pcapng_writer;
+pub mod rip;
 pub mod writer;
 pub use writer::Writer;
 
