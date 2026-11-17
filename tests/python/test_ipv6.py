@@ -115,8 +115,8 @@ class IPv6Tests(unittest.TestCase):
             self.assertEqual(len(packet.data.data), size - 8)
             self.assertEqual(bytes(packet), wire)
             self.assertIsInstance(ethernet.Ethernet(MAC + wire).data.data, udp.UDP)
-        with self.assertRaises(udp.LimitError):
-            udp.UDP(datagram)
+        # UDP has no size limit, as in dpkt.
+        self.assertEqual(len(udp.UDP(datagram)), 200000)
 
     def test_jumbo_checksums_use_a_32_bit_length(self):
         def ones_complement(buf):

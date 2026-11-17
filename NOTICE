@@ -11,17 +11,11 @@ checksum update semantics under its BSD license. dpkt's copyright and
 license are retained in licenses/dpkt.txt.
 Keep this notice and that license with source and binary distributions. No upstream endorsement is implied.
 
-The fixed-header TCP API is compared with published dpkt 1.9.6 and 1.9.8.
-The TCP core, facade, independent fixtures and tests are original project work;
-dpkt remains the API/behavior reference under the retained BSD license.
+The TCP and UDP facades port dpkt's tcp and udp modules, including their
+classes and constants, under the same retained upstream BSD license.
 
 The IPv4 facade ports dpkt's ip module, including its class, protocol table
 and constants, under the same retained upstream BSD license.
-
-The fixed-header UDP API uses dpkt 1.9.6 and 1.9.8 as behavior references,
-including retained length/checksum fields and opaque payload handling. The UDP
-core, facade, independently constructed fixtures and tests are original work.
-The applicable upstream BSD attribution and license above remain in force.
 
 IPv6 base fields, checksum conventions and Python dispatch behavior use the
 same pinned dpkt references and retained BSD attribution. The bounded Rust

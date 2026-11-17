@@ -93,13 +93,9 @@ class CompositionTests(unittest.TestCase):
         # dpkt packs IPv4 and TCP options as assigned, whatever hl or off says.
         self.assertEqual(len(bytes(ip.IP(hl=15, opts=b"\x01" * 44))), 64)
         self.assertEqual(len(bytes(tcp.TCP(off=15, opts=b"\x01" * 44))), 64)
-        packet = tcp.TCP()
-        packet.data = packet
-        with self.assertRaises(TypeError):
-            bytes(packet)
-        # IPv4 and Ethernet pack their payload the way dpkt's Packet does, without
-        # a cycle check.
-        for packet in (ip.IP(), ethernet.Ethernet()):
+        # IPv4, TCP and Ethernet pack their payload the way dpkt's Packet does,
+        # without a cycle check.
+        for packet in (ip.IP(), tcp.TCP(), ethernet.Ethernet()):
             packet.data = packet
             with self.assertRaises(RecursionError):
                 bytes(packet)

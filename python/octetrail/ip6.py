@@ -8,7 +8,7 @@ import socket
 import struct
 from functools import partial
 
-from . import _native, ip, udp
+from . import _native, ip
 from .errors import NeedData, UnpackError
 from .packet import Packet
 
@@ -113,12 +113,7 @@ class IP6(Packet):
             self.data = rest
 
     def _decode(self, p, buf):
-        cls = self._protosw[p]
-        if cls is udp.UDP and len(buf) > udp.DEFAULT_MAX_DATAGRAM_BYTES:
-            # A jumbo payload (plen 0) can be larger than a standalone UDP
-            # datagram may be. dpkt decodes it as UDP, so do the same.
-            return udp.UDP._from_jumbo(buf)
-        return cls(buf)
+        return self._protosw[p](buf)
 
     def headers_str(self):
         """Return the last next-header value and the packed extension headers."""

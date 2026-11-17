@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+TCP and UDP now parse and pack the way dpkt 1.9.8 does:
+
+- API: `TCP` and `UDP` are `Packet` subclasses with dpkt's `repr()`,
+  `pprint()`, `dict()` and bit fields. Unknown constructor keywords become
+  attributes, and a positional `bytearray` or `memoryview` is accepted, instead
+  of raising `TypeError`. `opts` and `data` may be any byte-like or layer
+  object.
+- Limits: the 16 MiB TCP and 65535-byte UDP limits are removed, with
+  `tcp.LimitError`, `udp.LimitError`, `DEFAULT_MAX_SEGMENT_BYTES` and
+  `DEFAULT_MAX_DATAGRAM_BYTES`.
+- Packing: a packet-object cycle raises `RecursionError`, as in dpkt.
+
 IPv4 now parses and packs the way dpkt 1.9.8 does:
 
 - API: `IP` is a `Packet` subclass with dpkt's `repr()`, `pprint()`, `dict()`,
