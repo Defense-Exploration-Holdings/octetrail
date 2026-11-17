@@ -1,5 +1,6 @@
 """IPv6 and its extension headers, parsed and packed the way dpkt 1.9.8 does."""
 
+import gc
 import importlib.util
 import io
 import struct
@@ -223,15 +224,30 @@ class IPv6Tests(unittest.TestCase):
             body = b"".join(F.ah(51, b"") for _ in range(count)) + F.ah(59, b"")
             return F.base(51, body, plen=0)
 
-        start = time.perf_counter()
-        small = ip6.IP6(chain(2000))
-        small_time = time.perf_counter() - start
-        start = time.perf_counter()
-        large = ip6.IP6(chain(16000))
-        large_time = time.perf_counter() - start
+        def parse(count):
+            raw = chain(count)
+            # The fastest of a few runs, with the collector paused, keeps a
+            # slow or busy runner's pauses out of the comparison.
+            best = None
+            gc.collect()
+            gc.disable()
+            try:
+                for _ in range(3):
+                    start = time.perf_counter()
+                    packet = ip6.IP6(raw)
+                    elapsed = time.perf_counter() - start
+                    best = elapsed if best is None else min(best, elapsed)
+            finally:
+                gc.enable()
+            return packet, best
+
+        small, small_time = parse(1000)
+        large, large_time = parse(16000)
         self.assertEqual(len(large.all_extension_headers), 16001)
-        self.assertLess(large_time, max(small_time, 0.001) * 40)
-        self.assertEqual(len(small.all_extension_headers), 2001)
+        self.assertEqual(len(small.all_extension_headers), 1001)
+        # 16 times the headers: linear parsing takes about 16 to 21 times as
+        # long and quadratic parsing 256 times. The bound sits between the two.
+        self.assertLess(large_time, max(small_time, 0.001) * 80)
 
     def test_raw_ethernet_and_captures(self):
         wire = case("udp")
