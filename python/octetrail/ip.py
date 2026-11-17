@@ -1,7 +1,9 @@
-"""Bounded IPv4 datagrams with opaque options and TCP/UDP composition.
+"""IPv4 datagrams with opaque options and TCP/UDP composition.
 
-Zero IPv4 checksums update length and header checksum; within that same update,
-zero TCP/UDP checksums are filled for nonfragments. Explicit sums are retained.
+Parsing matches dpkt 1.9.8: any version and any IHL from 5 up are accepted, and options
+and payload are sliced from the bytes present. Zero IPv4 checksums update length and
+header checksum; within that same update, zero TCP/UDP checksums are filled for
+nonfragments. Explicit sums are retained.
 """
 
 import operator
@@ -19,9 +21,10 @@ IP_OFFMASK = 0x1FFF
 
 
 class IP:
-    """Mutable IPv4 base fields. Parsing requires a complete declared datagram.
+    """Mutable IPv4 base fields, parsed and packed as dpkt 1.9.8 does.
 
-    v=4 and a consistent 20..60-byte header are supported. offset uses 1.9.8's
+    A buffer shorter than 20 bytes raises NeedData and an IHL below 5 raises
+    UnpackError; nothing else is checked. offset uses 1.9.8's
     eight-octet units, which differ from 1.9.6's byte units. Fragment metadata is
     preserved but never reassembled. Legacy off and generic Packet APIs are absent.
     """
@@ -65,19 +68,10 @@ class IP:
             self.len = len(self)
 
     def unpack(self, raw):
-        self._unpack(raw)
-
-    @classmethod
-    def _from_ethernet(cls, raw):
-        packet = cls.__new__(cls)
-        packet._unpack(raw, nested=True)
-        return packet
-
-    def _unpack(self, raw, *, nested=False):
         if not isinstance(raw, bytes):
             raise TypeError("IP unpack requires bytes")
         try:
-            fields, opts, data = _native._ipv4_unpack(raw, nested=nested)
+            fields, opts, data = _native._ipv4_unpack(raw)
         except _native.TruncatedError as error:
             raise NeedData(str(error)) from None
         except _native.Ipv4UnpackError as error:
@@ -99,7 +93,7 @@ class IP:
         if decoder is not None and self.offset == 0:
             try:
                 decoded = decoder(data)
-            except (UnpackError, NotImplementedError):
+            except UnpackError:
                 pass
             else:
                 self.data = decoded
@@ -192,10 +186,7 @@ class IP:
         return (*result, self.src, self.dst)
 
     def pack_hdr(self):
-        try:
-            return _native._ipv4_header(self._header_args())
-        except _native.Ipv4UnpackError as error:
-            raise UnpackError(str(error)) from None
+        return _native._ipv4_header(self._header_args())
 
     def _payload_size(self):
         if not isinstance(self.data, (bytes, tcp.TCP, udp.UDP)):
@@ -206,18 +197,10 @@ class IP:
         if not isinstance(self.opts, bytes):
             raise TypeError("IPv4 opts requires bytes")
         fields = self._header_args()
-        if self.hl < 5:
-            raise UnpackError("invalid header length")
-        if len(self.opts) != 4 * self.hl - IP_HDR_LEN:
-            raise PackError("IPv4 options must match hl and fit 40 bytes")
-        size = IP_HDR_LEN + len(self.opts) + self._payload_size()
-        if size > 65535:
+        if self.sum == 0 and len(self) > 65535:
             raise PackError("IPv4 datagram exceeds 65535 bytes")
         payload = self.data if isinstance(self.data, bytes) else bytes(self.data)
-        try:
-            raw, length, checksum = _native._ipv4_pack(fields, self.opts, payload)
-        except _native.Ipv4UnpackError as error:
-            raise UnpackError(str(error)) from None
+        raw, length, checksum = _native._ipv4_pack(fields, self.opts, payload)
         if (
             self.sum == 0
             and self.p in (IP_PROTO_TCP, IP_PROTO_UDP)

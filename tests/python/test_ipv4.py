@@ -69,12 +69,14 @@ class IPv4Tests(unittest.TestCase):
         q = ip.IP(raw)
         self.assertEqual((q.rf, q.df, q.mf, q.offset), (1, 1, 1, 3))
 
-    def test_complete_header_and_payload_are_required(self):
+    def test_complete_header_is_required_but_payload_may_be_short(self):
         for length in range(20):
             with self.subTest(length=length), self.assertRaises(NeedData):
                 ip.IP(LITERAL[:length])
-        with self.assertRaises(NeedData):
-            ip.IP(LITERAL[:-1])
+        short = ip.IP(LITERAL[:-1])
+        self.assertEqual((short.len, short.data), (24, b"rai"))
+        self.assertEqual(bytes(short), LITERAL[:-1])
+        self.assertEqual(ip.IP(b"\x4f" + LITERAL[1:]).opts, b"rail")
 
     def test_offset_setter_uses_wire_units_and_preserves_flags(self):
         p = ip.IP(LITERAL)
@@ -93,19 +95,18 @@ class IPv4Tests(unittest.TestCase):
     def test_bad_ihl_maps_to_public_unpack_error(self):
         with self.assertRaises(UnpackError):
             ip.IP(b"\x44" + LITERAL[1:])
-        with self.assertRaises(UnpackError):
-            bytes(ip.IP(hl=4))
+        self.assertEqual(bytes(ip.IP(hl=4))[:1], b"\x44")
 
-    def test_bounded_options_version_and_offload_policy(self):
-        for first in (0x65,):
-            with self.subTest(first=first), self.assertRaises(NotImplementedError):
-                ip.IP(bytes([first]) + LITERAL[1:])
-        with self.assertRaises(PackError):
-            bytes(ip.IP(opts=b"\0" * 4))
+    def test_any_version_options_as_assigned_and_offload_length(self):
+        for first in (0x05, 0x65, 0xF5):
+            with self.subTest(first=first):
+                packet = ip.IP(bytes([first]) + LITERAL[1:])
+                self.assertEqual((packet.v, packet.data), (first >> 4, b"rail"))
+        self.assertEqual(bytes(ip.IP(opts=b"\0" * 4))[:4], b"\x45\x00\x00\x18")
         packet = ip.IP(hl=6, opts=b"\x01" * 4, data=b"rail")
         self.assertEqual(ip.IP(bytes(packet)).opts, b"\x01" * 4)
-        with self.assertRaises(NotImplementedError):
-            ip.IP(LITERAL[:2] + b"\0\0" + LITERAL[4:])
+        offload = ip.IP(LITERAL[:2] + b"\0\0" + LITERAL[4:] + b"xx")
+        self.assertEqual((offload.len, offload.data), (0, b"railxx"))
         with self.assertRaises(NotImplementedError):
             _ = ip.IP().off
 

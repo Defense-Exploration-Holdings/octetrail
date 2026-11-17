@@ -1,4 +1,4 @@
-"""Compare the bounded TCP base header with both pinned dpkt versions."""
+"""Compare TCP headers, options and payloads with both pinned dpkt versions."""
 
 import argparse
 import hashlib
@@ -68,7 +68,7 @@ def main():
     payload = cases()
     matching = [case for case in payload if case["status"] == "matching"]
     differences = [case for case in payload if case["status"] == "difference"]
-    require(len(matching) > 100 and len(differences) == 2, "Unexpected TCP corpus partition")
+    require(len(matching) > 100 and len(differences) == 5, "Unexpected TCP corpus partition")
     require(
         len({case["id"] for case in payload}) == len(payload),
         "TCP corpus has duplicate case identifiers",
@@ -95,7 +95,7 @@ def main():
     print(
         json.dumps(
             {
-                "scope": "TCP base header, opaque options, shared eight flags, bytes payload and caller-supplied checksum",
+                "scope": "TCP header, nine flags, reserved bits, opaque options, bytes payload and caller-supplied checksum",
                 "declared_cases": len(payload),
                 "matching_cases_per_provider": len(matching),
                 "declared_differences_per_provider": len(differences),

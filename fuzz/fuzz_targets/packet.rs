@@ -5,9 +5,7 @@ use octetrail::{ethernet, ipv4, ipv6, tcp, udp};
 
 fn transport(protocol: u8, data: &[u8]) {
     match protocol {
-        6 => {
-            let _ = tcp::Segment::parse(data, tcp::Limits::default());
-        }
+        6 => tcp_round_trip(data),
         17 => {
             let _ = udp::Datagram::parse(data, udp::Limits::default());
         }
@@ -15,9 +13,17 @@ fn transport(protocol: u8, data: &[u8]) {
     }
 }
 
+// A parsed segment always packs back to the exact input, as in dpkt.
+fn tcp_round_trip(data: &[u8]) {
+    if let Ok(segment) = tcp::Segment::parse(data, tcp::Limits::default()) {
+        assert_eq!(segment.to_bytes(tcp::Limits::default()).unwrap(), data);
+    }
+}
+
 fn network(data: &[u8]) {
-    if let Ok(packet) = ipv4::Packet::parse(data) {
+    if let Ok(mut packet) = ipv4::Packet::parse(data) {
         transport(packet.header.protocol, packet.data);
+        let _ = packet.to_bytes();
     }
     if let Ok(packet) = ipv6::Packet::parse(data, ipv6::Limits::default()) {
         transport(packet.protocol, packet.data);
@@ -29,6 +35,6 @@ fuzz_target!(|data: &[u8]| {
         network(frame.data);
     }
     network(data);
-    let _ = tcp::Segment::parse(data, tcp::Limits::default());
+    tcp_round_trip(data);
     let _ = udp::Datagram::parse(data, udp::Limits::default());
 });

@@ -45,10 +45,13 @@ class TCPFixtureTests(unittest.TestCase):
                         for byte in raw[start:end]:
                             value = value * 256 + byte
                         self.assertEqual(value, state[name])
-                    self.assertEqual(raw[12], state["off"] * 16)
-                    self.assertEqual(raw[13], state["flags"])
-                    self.assertEqual(raw[20 : state["off"] * 4].hex(), state["opts"])
-                    self.assertEqual(raw[state["off"] * 4 :].hex(), state["data"])
+                    self.assertEqual(raw[12] >> 4, state["off"])
+                    self.assertEqual((raw[12] & 1) * 256 + raw[13], state["flags"])
+                    options_end = 20 + len(state["opts"]) // 2
+                    self.assertEqual(raw[20:options_end].hex(), state["opts"])
+                    self.assertEqual(raw[options_end:].hex(), state["data"])
+                    if case["operation"] == "parse" and state is case["expected"]["snapshots"][0]:
+                        self.assertEqual(options_end, min(state["off"] * 4, len(raw)))
                     self.assertEqual(len(raw), state["length"])
                     self.assertEqual(raw[:20].hex(), state["header_hex"])
 
@@ -56,11 +59,20 @@ class TCPFixtureTests(unittest.TestCase):
         payload = cases()
         self.assertEqual(payload, cases())
         self.assertEqual(len({case["id"] for case in payload}), len(payload))
-        self.assertEqual(sum(case["status"] == "difference" for case in payload), 2)
         self.assertEqual(
             {case["id"] for case in payload if case["status"] == "difference"},
-            {"excluded_nonce", "excluded_reserved"},
+            {
+                "header_bits.nonce",
+                "header_bits.reserved.1",
+                "header_bits.reserved.4",
+                "header_bits.all",
+                "nine_bit_flags.construct",
+            },
         )
+        for case in payload:
+            if case["status"] == "difference":
+                versions = case["expected_versions"]
+                self.assertEqual(versions["octetrail"], versions["1.9.8"])
         self.assertEqual(
             len([case for case in payload if case["id"].startswith("short_header.")]), 20
         )

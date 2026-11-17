@@ -58,7 +58,7 @@ class Ethernet:
     def _decode_data(self):
         if self.type == ETH_TYPE_IP:
             try:
-                decoded = ip.IP._from_ethernet(self.data)
+                decoded = ip.IP(self.data)
             except (UnpackError, NotImplementedError):
                 pass
             else:

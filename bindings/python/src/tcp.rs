@@ -1,39 +1,35 @@
-//! Python conversion for the independent fixed-header TCP core.
+//! Python conversion for the TCP core.
 
-use octetrail::tcp::{Error, Header, Limits, Segment};
-use pyo3::exceptions::{PyMemoryError, PyNotImplementedError, PyValueError};
+use octetrail::tcp::{parse_options, Error, Header, Limits, Segment};
+use pyo3::exceptions::{PyMemoryError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
 pyo3::create_exception!(_native, TCPHeaderError, PyValueError);
 
-type Fields = (u16, u16, u32, u32, u8, u8, u16, u16, u16);
+/// sport, dport, seq, ack, _off_flags, win, sum, urp.
+type Fields = (u16, u16, u32, u32, u16, u16, u16, u16);
+
+type ParsedOption<'py> = Option<(u8, Bound<'py, PyBytes>)>;
 
 fn python_error(error: Error) -> PyErr {
     match error {
-        error @ (Error::TruncatedHeader { .. } | Error::TruncatedOptions { .. }) => {
-            crate::TruncatedError::new_err(error.to_string())
-        }
+        error @ Error::TruncatedHeader { .. } => crate::TruncatedError::new_err(error.to_string()),
         error @ Error::InvalidDataOffset { .. } => TCPHeaderError::new_err(error.to_string()),
-        error @ Error::ReservedBitsUnsupported { .. } => {
-            PyNotImplementedError::new_err(error.to_string())
-        }
         error @ Error::SegmentLimit { .. } => crate::PacketLimitError::new_err(error.to_string()),
         Error::LengthOverflow => PyValueError::new_err(error.to_string()),
         Error::Allocation => PyMemoryError::new_err(error.to_string()),
-        Error::InvalidOptionsLength => PyValueError::new_err(error.to_string()),
     }
 }
 
 fn header(fields: Fields) -> Header {
-    let (sport, dport, seq, ack, off, flags, win, checksum, urp) = fields;
+    let (sport, dport, seq, ack, off_flags, win, checksum, urp) = fields;
     Header {
         sport,
         dport,
         seq,
         ack,
-        off,
-        flags,
+        off_flags,
         win,
         checksum,
         urp,
@@ -49,7 +45,14 @@ fn _tcp_unpack<'py>(
     let h = segment.header;
     Ok((
         (
-            h.sport, h.dport, h.seq, h.ack, h.off, h.flags, h.win, h.checksum, h.urp,
+            h.sport,
+            h.dport,
+            h.seq,
+            h.ack,
+            h.off_flags,
+            h.win,
+            h.checksum,
+            h.urp,
         ),
         PyBytes::new(py, segment.opts),
         PyBytes::new(py, segment.data),
@@ -57,9 +60,8 @@ fn _tcp_unpack<'py>(
 }
 
 #[pyfunction]
-fn _tcp_header(py: Python<'_>, fields: Fields) -> PyResult<Bound<'_, PyBytes>> {
-    let bytes = header(fields).to_bytes().map_err(python_error)?;
-    Ok(PyBytes::new(py, &bytes))
+fn _tcp_header(py: Python<'_>, fields: Fields) -> Bound<'_, PyBytes> {
+    PyBytes::new(py, &header(fields).to_bytes())
 }
 
 #[pyfunction]
@@ -79,10 +81,19 @@ fn _tcp_pack<'py>(
     Ok(PyBytes::new(py, &bytes))
 }
 
+#[pyfunction]
+fn _tcp_parse_opts<'py>(py: Python<'py>, bytes: &[u8]) -> Vec<ParsedOption<'py>> {
+    parse_options(bytes)
+        .into_iter()
+        .map(|option| option.map(|(kind, data)| (kind, PyBytes::new(py, data))))
+        .collect()
+}
+
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(_tcp_unpack, module)?)?;
     module.add_function(wrap_pyfunction!(_tcp_header, module)?)?;
     module.add_function(wrap_pyfunction!(_tcp_pack, module)?)?;
+    module.add_function(wrap_pyfunction!(_tcp_parse_opts, module)?)?;
     module.add("TCPHeaderError", module.py().get_type::<TCPHeaderError>())?;
     Ok(())
 }

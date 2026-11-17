@@ -11,7 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import octetrail
-from octetrail import PackError, ethernet, ip, pcap, pcapng, tcp, udp
+from octetrail import ethernet, ip, pcap, pcapng, tcp, udp
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location(
@@ -61,18 +61,17 @@ class CompositionTests(unittest.TestCase):
         short = F.MACS + b"\x08\x00short"
         self.assertEqual(ethernet.Ethernet(short).data, b"short")
 
-    def test_inconsistent_ipv4_header_length_is_direct_error_but_nested_bytes(self):
-        # Local metadata-only inconsistency: a 24-byte header declares 20 bytes.
+    def test_ipv4_header_longer_than_total_length_decodes_like_dpkt(self):
+        # A 24-byte header that declares a 20-byte datagram keeps its options and no payload.
         raw = struct.pack("!BBHHHBBH4s4s", 0x46, 0, 20, 0, 0, 64, 253, 0, F.SRC, F.DST)
         raw += b"\x01" * 4
         wire = F.MACS + b"\x08\x00" + raw
-        with self.assertRaises(ValueError) as raised:
-            ip.IP(raw)
-        self.assertIs(type(raised.exception), ValueError)
-        for frame in (ethernet.Ethernet(wire), ethernet.Ethernet(data=raw)):
-            self.assertEqual(frame.data, raw)
-            self.assertFalse(hasattr(frame, "ip"))
-        self.assertEqual(bytes(ethernet.Ethernet(wire)), wire)
+        packet = ip.IP(raw)
+        self.assertEqual((packet.opts, packet.data), (b"\x01" * 4, b""))
+        frame = ethernet.Ethernet(wire)
+        self.assertIsInstance(frame.ip, ip.IP)
+        # The zero checksum makes packing set the length to the 24 bytes present.
+        self.assertEqual(bytes(frame)[16:18], b"\x00\x18")
 
     def test_nested_fallback_does_not_swallow_programmer_or_resource_errors(self):
         raw = F.MACS + b"\x08\x00" + bytes(20)
@@ -89,12 +88,12 @@ class CompositionTests(unittest.TestCase):
                 ):
                     ethernet.Ethernet(raw)
                 self.assertIs(raised.exception, error)
-                unpack.assert_called_once_with(bytes(20), nested=True)
+                unpack.assert_called_once_with(bytes(20))
 
-    def test_options_must_fit_layout_and_unsupported_object_cycles_fail(self):
-        for packet in (ip.IP(hl=15, opts=b"\x01" * 44), tcp.TCP(off=15, opts=b"\x01" * 44)):
-            with self.assertRaises(PackError):
-                bytes(packet)
+    def test_options_pack_as_assigned_and_object_cycles_fail(self):
+        # dpkt packs IPv4 and TCP options as assigned, whatever hl or off says.
+        self.assertEqual(len(bytes(ip.IP(hl=15, opts=b"\x01" * 44))), 64)
+        self.assertEqual(len(bytes(tcp.TCP(off=15, opts=b"\x01" * 44))), 64)
         for packet in (ethernet.Ethernet(), ip.IP(), tcp.TCP()):
             packet.data = packet
             with self.assertRaises(TypeError):

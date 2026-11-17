@@ -1,7 +1,9 @@
 # TCP headers with opaque options
 
-`octetrail.tcp.TCP` reads and writes an offline 20-byte TCP base header, 0..40 option bytes and an opaque payload. The native Rust core borrows the input payload; the Python
-interface returns owned bytes. This API performs no network operation.
+`octetrail.tcp.TCP` reads and writes an offline TCP header, opaque option bytes and
+an opaque payload the way dpkt 1.9.8 does. The native Rust core borrows the input
+payload; the Python interface returns owned bytes. This API performs no network
+operation.
 
 ```python
 from octetrail import tcp
@@ -29,52 +31,59 @@ arguments and unknown constructor keywords raise `TypeError`.
 | --- | --- | --- |
 | `sport`, `dport` | Unsigned 16 bits each | `0xdead`, `0` |
 | `seq`, `ack` | Unsigned 32 bits each | `0xdeadbeef`, `0` |
-| `off` | Four bits, in 32-bit words | `5`; values 5..15 are supported |
-| `flags` | Shared eight-bit flag surface | `TH_SYN` (`2`) |
+| `_off_flags` | Unsigned 16 bits: offset, reserved bits and flags | `0x5002` |
+| `off` | High four bits of `_off_flags`, in 32-bit words | `5` |
+| `_rsv` | Next three bits of `_off_flags` | `0` |
+| `flags` | Low nine bits of `_off_flags`, including `TH_NS` | `TH_SYN` (`2`) |
 | `win` | Unsigned 16 bits | `65535` |
 | `sum`, `urp` | Unsigned 16 bits each | `0`, `0` |
-| `opts` | Opaque bytes, at most 40 | `b''` |
+| `opts` | Opaque bytes | `b''` |
 | `data` | Opaque bytes | `b''` |
 
-All fields are mutable. `bytes(segment)` serializes the fixed header and exact
-payload with no padding. `len(segment)` returns 20 plus options and payload length for the
-supported fields. `pack_hdr()` returns only the 20-byte header. `unpack(bytes)`
-replaces fields only after a complete supported header is validated. Repeated
-serialization does not change fields or checksum values.
+All fields are mutable. `off`, `_rsv` and `flags` read and write their bits of
+`_off_flags`; assigning a value too large for its bits raises `ValueError`, as
+dpkt does. `bytes(segment)` writes the header, then `opts`, then `data`, exactly as
+assigned: `off` is not derived from the options and is not checked against them.
+`len(segment)` returns 20 plus the option and payload lengths. `pack_hdr()` returns
+only the 20-byte header. Repeated serialization does not change fields or
+checksum values.
 
-The exported control constants are `TH_FIN`, `TH_SYN`, `TH_RST`, `TH_PUSH`,
-`TH_ACK`, `TH_URG`, `TH_ECE` and `TH_CWR`, with values 1 through 128. `TCP_PORT_MAX`
-and `TCP_WIN_MAX` are 65535. `TCP_HDR_LEN` is 20. These are selected constants,
-not the full upstream inventory.
+`tcp.parse_opts(buf)` splits option bytes into `(kind, data)` tuples as dpkt does.
+Kinds 0 and 1 are single bytes. Other kinds read a length byte, counted as at
+least two, and take the bytes after it up to that length or the end of the
+buffer. A kind with no length byte ends the list with `None`.
+`tcp.tcp_flags_to_str(flags)` names the set flags, for example `'SYN,ACK'`.
+
+The exported constants are `TH_FIN` through `TH_CWR` (1 through 128), `TH_NS`
+(256), the `TCP_OPT_*` option kinds, `TCP_PORT_MAX` and `TCP_WIN_MAX` (65535) and
+`TCP_HDR_LEN` (20).
 
 ## Errors, limits and excluded behavior
 
-An explicitly supplied buffer shorter than 20 bytes raises `NeedData`, a subclass
-of `UnpackError` and `Error`. A header whose data offset is below five raises
-`UnpackError`. Incomplete option bytes raise `NeedData`; nonzero nonce/reserved bits
-raise `NotImplementedError`. The error messages are not a compatibility promise.
+A buffer shorter than 20 bytes raises `NeedData`, a subclass of `UnpackError` and
+`Error`. A data offset below five raises `UnpackError`. Nothing else is checked
+when parsing: the options are the bytes from 20 up to the declared header length
+that are present, and the payload is whatever follows. A buffer shorter than the
+declared header gives short options and no payload, as in dpkt. Reserved and
+nonce bits are kept. The error messages are not a compatibility promise.
 
 For the scalar fields in the table, non-integers and out-of-range values raise
-`PackError` when serialized, with field validation deferred until that call.
-`PackError` inherits from `Error`. Option bytes must match the assigned data
-offset; mismatches raise `PackError`, a deliberate stricter packing rule. Non-bytes input, payload or option
-objects raise `TypeError` when used by their corresponding operations.
+`PackError` when serialized. `PackError` inherits from `Error`. Non-bytes input,
+payload or option objects raise `TypeError` when used by their corresponding
+operations.
 
 The default complete-segment limit is 16 MiB, including the 20-byte header.
 Parsing and complete serialization reject a one-byte excess with `tcp.LimitError`,
-a `ValueError` subclass. Native serialization validates before reserving its
-output buffer. Rust callers can choose `tcp::Limits`. This is an offline resource
-policy, not a TCP/IP maximum or a total process-memory bound. Caller input,
-native output, Python copies and retained objects are separate memory costs.
+a `ValueError` subclass; dpkt has no such limit. Native serialization validates
+before reserving its output buffer. Rust callers can choose `tcp::Limits`. This is
+an offline resource policy, not a TCP/IP maximum or a total process-memory bound.
 Allocation errors are mapped but not deliberately induced in tests.
 
-The required flag surface is the eight bits shared by dpkt 1.9.6 and 1.9.8.
-In 1.9.8 the nonce bit is exposed as a ninth flag; in 1.9.6 it remains in a
-separate internal header byte. This implementation rejects that bit instead of
-claiming equivalence across those different interfaces. Nine-bit flags, reserved
-bits, option-value parsers, implicit payload conversion, application protocols,
-generic `dpkt.Packet` methods, full constant inventories, arbitrary subclass
-behavior, connection state, retransmission and stream reassembly are excluded.
+dpkt 1.9.6 keeps the nonce and reserved bits in one offset byte and has eight
+flags; 1.9.8 has nine flags and a separate `_rsv`. OctetRail follows 1.9.8, and
+the comparison below records those cases as version differences. Implicit
+payload conversion, application protocols, generic `dpkt.Packet` methods,
+connection state, retransmission and stream reassembly are outside this API.
 Ethernet/IPv4 dispatch is documented in the composition guide.
 
 ## Reproduce the comparisons
@@ -102,10 +111,11 @@ python3 -B tools/tcp_differential.py --oracle-196 /tmp/oracle-196/bin/python --o
 
 The probe verifies isolated installed module origins and distribution versions.
 Fields, exact bytes, header bytes, lengths, mutation, stable outputs and error
-families/phases are checked against independent expectations. Three declared
-scope differences are measured separately and never counted as matching cases.
+families/phases are checked against independent expectations. Five cases where
+dpkt 1.9.6 and 1.9.8 differ are measured separately; OctetRail must match 1.9.8
+on them.
 Omitting `--python` validates only the oracles and reports OctetRail pending.
-These comparisons do not establish full TCP or downstream compatibility.
+These comparisons do not establish downstream compatibility.
 
 Probe provenance and comparison checks use explicit failures that remain active
 under Python optimization. Wrong requested versions, non-isolated execution and
