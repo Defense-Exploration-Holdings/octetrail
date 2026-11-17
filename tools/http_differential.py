@@ -194,6 +194,157 @@ def review_checks(package, provider):
     return {"large_body_bytes": 1 << 21}
 
 
+def attempt(action):
+    try:
+        found = action()
+    except Exception as error:  # noqa: BLE001 - exceptions are observations.
+        return {"error": type(error).__name__, "message": str(error)}
+    if isinstance(found, (bytes, bytearray)):
+        return {"hex": bytes(found).hex()}
+    return found
+
+
+def observations(package):
+    """Class shape, subclass hooks and error text, compared with dpkt 1.9.8."""
+    H = package.http
+
+    class Sip(H.Request):
+        _Request__methods = dict.fromkeys(("INVITE", "ACK"))
+        _Request__proto = "SIP"
+
+    class SipReply(H.Response):
+        _Response__proto = "SIP"
+
+    invite = b"INVITE sip:a@b SIP/2.0\r\nTo: a\r\nContent-Length: 2\r\n\r\nhi"
+    reply = b"SIP/2.0 180 Ringing\r\nTo: a\r\n\r\n"
+    request = b"GET /a HTTP/1.1\r\nHost: x\r\nContent-Length: 3\r\n\r\nabcde"
+
+    def shape(message):
+        return {
+            # OrderedDict's repr changed in Python 3.12.
+            "repr": repr(message).replace(repr(message.headers), "HEADERS"),
+            "str": str(message),
+            "bytes": bytes(message).hex(),
+            "len": len(message),
+            "vars": sorted(vars(message)),
+            "pack_hdr": message.pack_hdr(),
+        }
+
+    found = {
+        # dpkt's Packet has a "Temp" base left by its Python 2 metaclass shim.
+        "mro": [c.__name__ for c in H.Request.__mro__ if c.__name__ != "Temp"],
+        "response_mro": [c.__name__ for c in H.Response.__mro__ if c.__name__ != "Temp"],
+        "hdr": attempt(lambda: [H.Message.__hdr__, H.Request.__hdr__, H.Response.__hdr__]),
+        "request": attempt(lambda: shape(H.Request(request))),
+        "response": attempt(lambda: shape(H.Response(b"HTTP/1.1 204 No\r\nA: b\r\n\r\nzz"))),
+        "message": attempt(lambda: shape(H.Message(b"Host: a\r\n\r\nbody"))),
+        "default_request": attempt(lambda: shape(H.Request())),
+        "default_response": attempt(lambda: shape(H.Response())),
+        "keywords": attempt(lambda: shape(H.Request(uri="/k", body=b"b", data=b"d"))),
+        "sip_request": attempt(lambda: shape(Sip(invite))),
+        "sip_reply": attempt(lambda: shape(SipReply(reply))),
+        "sip_rejects_http": attempt(lambda: Sip(request)),
+        "http_rejects_sip": attempt(lambda: H.Request(invite)),
+        "bad_request_line": attempt(lambda: H.Request(b"GET\r\n\r\n")),
+        "bad_method": attempt(lambda: H.Request(b"BREW / HTTP/1.1\r\n\r\n")),
+        "bad_version": attempt(lambda: H.Request(b"GET / FTP/1.0\r\n\r\n")),
+        "bad_response": attempt(lambda: H.Response(b"HTTP/1.1\r\n\r\n")),
+        "bad_status_proto": attempt(lambda: H.Response(b"FTP/1.1 200 OK\r\n\r\n")),
+        "short_body": attempt(lambda: H.Request(request[:-3])),
+        "negative_length": attempt(
+            lambda: H.Request(b"GET / HTTP/1.1\r\nContent-Length: -2\r\n\r\nab")
+        ),
+        "bad_length": attempt(lambda: H.Request(b"GET / HTTP/1.1\r\nContent-Length: x\r\n\r\n")),
+        "largest_length": attempt(
+            lambda: H.Request(b"GET / HTTP/1.1\r\nContent-Length: 9223372036854775807\r\n\r\n")
+        ),
+        "huge_length": attempt(
+            lambda: H.Request(b"GET / HTTP/1.1\r\nContent-Length: 9223372036854775808\r\n\r\n")
+        ),
+        "huge_negative_length": attempt(
+            lambda: H.Request(b"GET / HTTP/1.1\r\nContent-Length: -9223372036854775809\r\n\r\n")
+        ),
+        "largest_chunk": attempt(
+            lambda: H.Response(
+                b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
+                b"7fffffffffffffff\r\nab\r\n0\r\n\r\n"
+            )
+        ),
+        "huge_chunk": attempt(
+            lambda: H.Response(
+                b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
+                b"8000000000000000\r\nab\r\n0\r\n\r\n"
+            )
+        ),
+        "huge_negative_chunk": attempt(
+            lambda: H.Response(
+                b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
+                b"-8000000000000001\r\nab\r\n0\r\n\r\n"
+            )
+        ),
+        "two_lengths": kind(
+            lambda: H.Request(b"GET / HTTP/1.1\r\nContent-Length: 1\r\nContent-Length: 1\r\n\r\nab")
+        ),
+        "two_encodings": attempt(
+            lambda: H.Request(
+                b"GET / HTTP/1.1\r\nTransfer-Encoding: a\r\nTransfer-Encoding: b\r\n\r\n"
+            )
+        ),
+        "bad_header": attempt(
+            lambda: H.Request(b"GET / HTTP/1.1\r\nbad name: it's\t\x01\\\r\n\r\n")
+        ),
+        "bad_header_quotes": attempt(lambda: H.Request(b"GET / HTTP/1.1\r\na b: \"'\r\n\r\n")),
+        "missing_chunk": attempt(
+            lambda: H.Response(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n\r\n")
+        ),
+        "bad_chunk": attempt(
+            lambda: H.Response(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nzz\r\n")
+        ),
+        "short_chunks": attempt(
+            lambda: H.Response(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nab\r\n")
+        ),
+        "error_classes": [
+            sorted(c.__name__ for c in type(_raised(action)).__mro__ if c.__module__ == "builtins")
+            for action in (
+                lambda: H.Request(b"GET / HTTP/1.1\r\nContent-Length: x\r\n\r\n"),
+                lambda: H.Request(
+                    b"GET / HTTP/1.1\r\nContent-Length: 1\r\nContent-Length: 1\r\n\r\n"
+                ),
+                lambda: H.Request(
+                    b"GET / HTTP/1.1\r\nTransfer-Encoding: a\r\nTransfer-Encoding: b\r\n\r\n"
+                ),
+                lambda: H.Request(b"GET / HTTP/1.1\r\nContent-Length: 9223372036854775808\r\n\r\n"),
+                lambda: H.Response(
+                    b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
+                    b"8000000000000000\r\nab\r\n0\r\n\r\n"
+                ),
+            )
+        ],
+        "unpack_again": attempt(lambda: shape(_unpacked(H.Request(), request))),
+        "bytearray": attempt(lambda: shape(H.Request(bytearray(request)))),
+    }
+    return found
+
+
+def kind(action):
+    """The error class only, for errors whose message varies with the Python version."""
+    found = attempt(action)
+    return found.get("error", found) if isinstance(found, dict) else found
+
+
+def _raised(action):
+    try:
+        action()
+    except Exception as error:  # noqa: BLE001 - the error is the observation.
+        return error
+    return None
+
+
+def _unpacked(message, buf):
+    message.unpack(buf)
+    return message
+
+
 def exercise(package):
     output = {}
     for case in cases():
@@ -242,6 +393,7 @@ def exercise(package):
         "HTTP partial request demand",
     )
     return {
+        "observations": observations(package),
         "cases": output,
         "constructors": constructors,
         "defaults": defaults,
@@ -263,6 +415,32 @@ def provenance(module, version):
         "unverified HTTP origin",
     )
     return package
+
+
+# Observations where OctetRail differs from 1.9.8 on purpose. dpkt fails on a
+# Content-Length that is not an integer, a repeated Content-Length and a repeated
+# Transfer-Encoding, and a Content-Length or chunk size outside Py_ssize_t, with
+# builtin errors; OctetRail raises classes that are both an UnpackError and that
+# builtin error, with the same message.
+_OVERFLOW = {
+    "error": "LengthOverflowError",
+    "message": "cannot fit 'int' into an index-sized integer",
+}
+DECLARED = {
+    "huge_length": _OVERFLOW,
+    "huge_negative_length": _OVERFLOW,
+    "huge_chunk": _OVERFLOW,
+    "huge_negative_chunk": _OVERFLOW,
+    "bad_length": {
+        "error": "HeaderValueError",
+        "message": "invalid literal for int() with base 10: 'x'",
+    },
+    "two_lengths": "HeaderTypeError",
+    "two_encodings": {
+        "error": "HeaderAttributeError",
+        "message": "'list' object has no attribute 'lower'",
+    },
+}
 
 
 def main():
@@ -287,6 +465,7 @@ def main():
         (a.oracle_198, "dpkt", "1.9.8"),
         *((x, "octetrail", version) for x in a.python),
     ]
+    reports = []
     for python, module, v in providers:
         r = subprocess.run(
             [python, "-B", "-I", "-O", __file__, "--probe", "--module", module, "--version", v],
@@ -301,6 +480,11 @@ def main():
             "HTTP observation mismatch " + module + v,
         )
         C.require(len(report["constructors"]) == 16, "HTTP constructor coverage")
+        reports.append(report["observations"])
+    reference = reports[1]
+    for (_, module, v), report in zip(providers[2:], reports[2:], strict=True):
+        wrong = sorted(k for k in reference if report.get(k) != DECLARED.get(k, reference[k]))
+        C.require(not wrong, "HTTP observation mismatch " + module + v + ": " + ", ".join(wrong))
     print(
         json.dumps(
             {
@@ -313,6 +497,10 @@ def main():
                 "defaults_per_provider": 2,
                 "mutations_per_provider": 2,
                 "partial_state_per_provider": 1,
+                "observations": len(reference),
+                "dpkt_196_differs_on": sorted(
+                    k for k in reference if reports[0].get(k) != reference[k]
+                ),
                 "providers": len(providers),
                 "unexpected_mismatches": 0,
             },

@@ -1,7 +1,8 @@
 # HTTP messages
 
 `octetrail.http` parses and packs HTTP/1.x requests and responses the way dpkt
-1.9.8 does, with the parsing in Rust. Call `http.Request(bytes)` or
+1.9.8 does, with header and chunked body parsing in Rust. The classes are
+[`Packet`](packet.md) subclasses, as in dpkt. Call `http.Request(bytes)` or
 `http.Response(bytes)` on one message's bytes. There is no stream reassembly and
 no automatic dispatch from TCP.
 
@@ -24,6 +25,17 @@ assert (r.method, r.uri, r.version, r.headers["host"]) == ("GET", "/note", "1.1"
 list of its values. `data` holds the bytes after the body. Keyword arguments set
 attributes on a new message. When a buffer is given, keyword arguments are
 ignored.
+
+As in dpkt, a subclass can replace the accepted methods and the protocol name.
+SIP does this:
+
+```python
+class Sip(http.Request):
+    _Request__methods = dict.fromkeys(("INVITE", "ACK"))
+    _Request__proto = "SIP"
+```
+
+A `Response` subclass sets `_Response__proto` the same way.
 
 ## Parsing
 
@@ -58,9 +70,18 @@ on chunk sizes.
 - `NeedData`: the body is shorter than Content-Length, the length is negative,
   or a chunked body ends before its zero-size chunk.
 - `UnpackError`: the start line is invalid, a header name is not one word, or a
-  chunk size is missing or invalid. A Content-Length that is not an integer, and
-  repeated Transfer-Encoding or Content-Length headers, also raise `UnpackError`;
-  dpkt fails on these with `ValueError`, `TypeError` or `AttributeError`.
+  chunk size is missing or invalid.
+- `HeaderValueError`, `HeaderTypeError` and `HeaderAttributeError`: a
+  Content-Length that is not an integer, a repeated Content-Length and a
+  repeated Transfer-Encoding. dpkt raises `ValueError`, `TypeError` and
+  `AttributeError` here. Each class is both an `UnpackError` and that builtin
+  error, with the same message.
+- `LengthOverflowError`: a Content-Length or chunk size outside the range of
+  `Py_ssize_t` (from -2\*\*63 to 2\*\*63 - 1 on 64-bit builds). dpkt raises
+  `OverflowError` with "cannot fit 'int' into an index-sized integer". The class
+  is both an `UnpackError` and an `OverflowError`, with that message.
+
+The messages are dpkt's.
 
 As in dpkt, a request keeps its start-line fields, and a message keeps its
 headers, when the body raises. There are no size limits: parsing takes time
@@ -88,10 +109,10 @@ the headers, the body and the packed bytes. Its seeds include chunked bodies,
 repeated headers, HTTP/0.9 and a 304 response. The
 [fixture driver](../tools/http_differential.py) checks 22 hand-written messages,
 16 constructors, the defaults, two mutations and partial state against dpkt
-1.9.6 and 1.9.8:
+1.9.6 and 1.9.8. It also compares 31 observations with dpkt 1.9.8, including
+`repr()`, SIP-style subclasses and every error message, where only the three
+declared header errors differ:
 
 ```sh
 python3 tools/http_differential.py --oracle-196 ORACLE196/bin/python --oracle-198 ORACLE198/bin/python --python INSTALLED_WHEEL/bin/python
 ```
-
-Exception messages can differ.
