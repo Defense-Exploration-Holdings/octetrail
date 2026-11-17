@@ -47,7 +47,7 @@ Ethernet decodes it.
 The [SSL and TLS module](docs/tls.md) parses and packs records, handshakes,
 hellos and certificate lists the way dpkt 1.9.8 does, with dpkt's cipher suite table.
 
-See the [0.4.1 release notes](docs/release-notes.md) for the changes
+See the [0.5.0 release notes](docs/release-notes.md) for the changes
 and their compatibility limits.
 
 ## Use the classic-pcap reader
