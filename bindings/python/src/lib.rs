@@ -452,6 +452,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     http::register(module)?;
     tls::register(module)?;
     vrrp::register(module)?;
+    gre::register(module)?;
     module.add_class::<RawReader>()?;
     module.add_class::<RawNgReader>()?;
     module.add_class::<RawWriter>()?;
@@ -465,5 +466,6 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
+mod gre;
 mod tcp;
 mod vrrp;
