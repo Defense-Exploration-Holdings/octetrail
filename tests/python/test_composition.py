@@ -166,13 +166,13 @@ class CompositionTests(unittest.TestCase):
 
     def test_origin_validation_cannot_accept_an_external_source_tree(self):
         fake = SimpleNamespace(__file__=str(ROOT / "external.py"))
-        metadata = SimpleNamespace(version="0.2.0", locate_file=lambda name: ROOT / name)
+        metadata = SimpleNamespace(version="0.3.0", locate_file=lambda name: ROOT / name)
         with (
             patch.object(F.importlib, "import_module", return_value=fake),
             patch.object(F.importlib.metadata, "distribution", return_value=metadata),
             self.assertRaisesRegex(ValueError, "unverified provider origin"),
         ):
-            F.provenance("octetrail", "0.2.0")
+            F.provenance("octetrail", "0.3.0")
 
 
 if __name__ == "__main__":

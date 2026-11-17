@@ -83,7 +83,7 @@ def main():
     assert absent["results"] == {}
     reports = []
     for python in args.python:
-        actual = probe(python, "octetrail", "0.2.0", payload)
+        actual = probe(python, "octetrail", "0.3.0", payload)
         validate(actual, payload)
         for case in matching:
             assert comparable(actual["results"][case["id"]]) == comparable(

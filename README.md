@@ -35,7 +35,7 @@ messages with opaque bodies and explicit bytes fallback, without stream reassemb
 The [passive TLS subset](docs/tls.md) adds explicit record framing and bounded
 ServerHello metadata, with other record and handshake data kept opaque.
 
-See the [0.2.0 release notes](docs/release-notes.md) for the composition changes
+See the [0.3.0 release notes](docs/release-notes.md) for the changes
 and their compatibility limits.
 
 ## Use the classic-pcap reader
