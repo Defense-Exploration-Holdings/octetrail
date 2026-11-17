@@ -18,6 +18,7 @@ from . import ip6 as ip6
 from . import ipip as ipip
 from . import ipx as ipx
 from . import llc as llc
+from . import loopback as loopback
 from . import ospf as ospf
 from . import packet as packet
 from . import pim as pim
@@ -25,6 +26,8 @@ from . import ppp as ppp
 from . import pppoe as pppoe
 from . import raw as raw
 from . import sctp as sctp
+from . import sll as sll
+from . import sll2 as sll2
 from . import ssl as ssl
 from . import stp as stp
 from . import tcp as tcp
@@ -67,6 +70,7 @@ __all__.extend(("ah", "esp"))
 __all__.extend(("crc32c", "ospf", "sctp"))
 __all__.extend(("gre", "pim"))
 __all__.append("arp")
+__all__.extend(("loopback", "sll", "sll2"))
 
 __all__.extend(("Packet", "hexdump", "in_cksum", "in_cksum_add", "in_cksum_done", "packet"))
 
