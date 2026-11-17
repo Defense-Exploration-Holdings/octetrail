@@ -467,6 +467,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
         module.py().get_type::<PacketLimitError>(),
     )?;
     tcp::register(module)?;
+    telnet::register(module)?;
     Ok(())
 }
 
@@ -476,4 +477,5 @@ mod radius_stun;
 mod rip;
 mod sctp;
 mod tcp;
+mod telnet;
 mod vrrp;

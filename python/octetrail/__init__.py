@@ -45,6 +45,7 @@ from . import ssl as ssl
 from . import stp as stp
 from . import stun as stun
 from . import tcp as tcp
+from . import telnet as telnet
 from . import tftp as tftp
 from . import tns as tns
 from . import tpkt as tpkt
@@ -92,6 +93,7 @@ __all__.extend(("ah", "esp"))
 __all__.extend(("crc32c", "ospf", "sctp"))
 __all__.extend(("gre", "pim"))
 __all__.append("arp")
+__all__.append("telnet")
 __all__.extend(("aoe", "aoeata", "aoecfg"))
 __all__.extend(("loopback", "sll", "sll2"))
 
