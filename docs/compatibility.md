@@ -56,6 +56,8 @@ The [Ethernet module](ethernet.md) parses and packs Ethernet II, IEEE 802.3 LLC,
 Novell raw, 802.1Q, MPLS and Cisco ISL frames, and the LLC, STP and IPX classes,
 the way dpkt 1.9.8 does. An MPLS stack with nothing after it raises an
 `UnpackError` subclass where dpkt raises `IndexError`.
+The [ICMP and ICMPv6 modules](icmp.md) parse and pack those messages the way
+dpkt 1.9.8 does, except one declared difference for an ICMPv6 quote.
 The [IGMP and VRRP modules](igmp-vrrp.md) parse and pack those messages the way
 dpkt 1.9.8 does, with no declared differences.
 The [SSL and TLS module](tls.md) parses and packs records, handshakes, hellos,

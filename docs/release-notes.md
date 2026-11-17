@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+ICMP and ICMPv6 now parse and pack the way dpkt 1.9.8 does:
+
+- New modules: `octetrail.icmp` with `ICMP` and its message classes, and
+  `octetrail.icmp6` with `ICMP6` and its message classes, with dpkt's constants.
+- IPv6 decodes protocol 1 as ICMP and 58 as ICMPv6.
+
 IGMP and VRRP now parse and pack the way dpkt 1.9.8 does:
 
 - New modules: `octetrail.igmp` with `IGMP` and `octetrail.vrrp` with `VRRP`.

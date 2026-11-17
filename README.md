@@ -36,6 +36,8 @@ The [Packet base class](docs/packet.md) is dpkt's, for writing your own header
 classes, with the checksum and hexdump helpers.
 The [Ethernet module](docs/ethernet.md) parses and packs Ethernet II, 802.3 LLC,
 Novell, 802.1Q, MPLS and ISL frames the way dpkt 1.9.8 does, with LLC, STP and IPX.
+The [ICMP and ICMPv6 modules](docs/icmp.md) parse and pack those messages the way
+dpkt 1.9.8 does, and IPv6 decodes them.
 The [IGMP and VRRP modules](docs/igmp-vrrp.md) parse and pack those messages the
 way dpkt 1.9.8 does, and IPv6 decodes them.
 The [SSL and TLS module](docs/tls.md) parses and packs records, handshakes,
