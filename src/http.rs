@@ -61,12 +61,15 @@ pub enum Error {
     /// `ValueError` from `int()` or `AttributeError` from a duplicated
     /// Transfer-Encoding header. Reported as `UnpackError`.
     Invalid(&'static str),
+    /// A body or chunk size outside `Py_ssize_t`; dpkt raises `OverflowError`.
+    Overflow,
 }
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NeedData(reason) | Self::Invalid(reason) => f.write_str(reason),
             Self::Unpack(reason) => f.write_str(reason),
+            Self::Overflow => f.write_str("cannot fit 'int' into an index-sized integer"),
         }
     }
 }
@@ -98,6 +101,34 @@ fn ascii(s: &[u8]) -> String {
         .map(|b| char::from(*b))
         .collect()
 }
+/// Python's `repr()` of an ASCII `str`.
+fn py_repr(s: &str) -> String {
+    let quote = if s.contains('\'') && !s.contains('"') {
+        '"'
+    } else {
+        '\''
+    };
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push(quote);
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '\t' => out.push_str("\\t"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            c if c == quote => {
+                out.push('\\');
+                out.push(c);
+            }
+            c if (c as u32) < 0x20 || c as u32 == 0x7f => {
+                out.push_str(&format!("\\x{:02x}", c as u32));
+            }
+            c => out.push(c),
+        }
+    }
+    out.push(quote);
+    out
+}
 /// `str.split(None, maxsplit)`.
 fn split(s: &str, maxsplit: Option<usize>) -> Vec<&str> {
     let mut out = Vec::new();
@@ -117,12 +148,15 @@ fn split(s: &str, maxsplit: Option<usize>) -> Vec<&str> {
     }
 }
 
-/// The result of Python's `int()`, saturated to the range that matters here.
+/// The result of Python's `int()`, reduced to the range that matters here.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Int {
     Negative,
-    /// A nonnegative value, or `usize::MAX` for anything larger.
+    /// A nonnegative value that fits `Py_ssize_t`.
     Value(usize),
+    /// A value outside `Py_ssize_t`, which `BytesIO.read` rejects with
+    /// `OverflowError`.
+    Overflow,
 }
 
 /// `int(text, radix)` for radix 10 or 16, including signs, a `0x` prefix in
@@ -144,17 +178,24 @@ pub fn python_int(text: &str, radix: u32) -> Option<Int> {
     if s.is_empty() || s.starts_with('_') || s.ends_with('_') || s.contains("__") {
         return None;
     }
-    let mut value = 0usize;
+    let mut value = 0u128;
     for c in s.chars().filter(|c| *c != '_') {
         let digit = c.to_digit(radix)?;
         value = value
-            .saturating_mul(radix as usize)
-            .saturating_add(digit as usize);
+            .saturating_mul(u128::from(radix))
+            .saturating_add(u128::from(digit));
     }
-    Some(if negative && value != 0 {
+    let limit = if negative {
+        i64::MIN.unsigned_abs()
+    } else {
+        i64::MAX.unsigned_abs()
+    };
+    Some(if value > u128::from(limit) {
+        Int::Overflow
+    } else if negative && value != 0 {
         Int::Negative
     } else {
-        Int::Value(value)
+        Int::Value(usize::try_from(value).unwrap_or(usize::MAX))
     })
 }
 
@@ -177,7 +218,7 @@ impl<'a> Reader<'a> {
     fn read(&mut self, n: Int) -> &'a [u8] {
         let rest = &self.data[self.pos..];
         let n = match n {
-            Int::Negative => rest.len(),
+            Int::Negative | Int::Overflow => rest.len(),
             Int::Value(n) => n.min(rest.len()),
         };
         self.pos += n;
@@ -204,7 +245,7 @@ fn headers(reader: &mut Reader<'_>) -> Result<Headers, Error> {
             None => (line.as_str(), ""),
         };
         if split(name, None).len() != 1 {
-            return Err(Error::Unpack(format!("invalid header: {line:?}")));
+            return Err(Error::Unpack(format!("invalid header: {}", py_repr(&line))));
         }
         let key = name.to_ascii_lowercase();
         match index.get(&key) {
@@ -255,6 +296,7 @@ fn read_body<'a>(reader: &mut Reader<'a>, mode: BodyMode) -> Result<Cow<'a, [u8]
     match mode {
         BodyMode::Empty => Ok(Cow::Borrowed(&[])),
         BodyMode::ToEnd => Ok(Cow::Borrowed(reader.rest())),
+        BodyMode::Length(Int::Overflow) => Err(Error::Overflow),
         BodyMode::Length(n) => {
             let body = reader.read(n);
             if Int::Value(body.len()) != n {
@@ -277,6 +319,9 @@ fn read_body<'a>(reader: &mut Reader<'a>, mode: BodyMode) -> Result<Cow<'a, [u8]
                     .ok_or_else(|| Error::Unpack("invalid chunk size".into()))?;
                 if n == Int::Value(0) {
                     found_end = true;
+                }
+                if n == Int::Overflow {
+                    return Err(Error::Overflow);
                 }
                 let chunk = reader.read(n);
                 if !strip_bytes(reader.readline()).is_empty() {
@@ -486,10 +531,15 @@ mod tests {
         assert_eq!(v("_1", 10), None);
         assert_eq!(v("0x", 16), None);
         assert_eq!(v("0x1", 10), None);
+        assert_eq!(v("99999999999999999999999", 10), Some(Int::Overflow));
         assert_eq!(
-            v("99999999999999999999999", 10),
-            Some(Int::Value(usize::MAX))
+            v("9223372036854775807", 10),
+            Some(Int::Value(i64::MAX as usize))
         );
+        assert_eq!(v("9223372036854775808", 10), Some(Int::Overflow));
+        assert_eq!(v("-9223372036854775808", 10), Some(Int::Negative));
+        assert_eq!(v("-9223372036854775809", 10), Some(Int::Overflow));
+        assert_eq!(v("8000000000000000", 16), Some(Int::Overflow));
     }
 
     #[test]

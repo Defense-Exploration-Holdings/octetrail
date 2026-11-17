@@ -50,8 +50,9 @@ compressed names the way dpkt 1.9.8 does, with dpkt's classes and subclass
 hooks, except one declared difference for text that is not UTF-8. It does not
 add transport dispatch.
 The [HTTP module](http.md) parses and packs HTTP/1.x requests and responses,
-including chunked bodies, the way dpkt 1.9.8 does. No automatic application
-dispatch is added.
+including chunked bodies, the way dpkt 1.9.8 does. Three header errors and
+the overflow of a Content-Length or chunk size, which dpkt raises as builtin
+errors, are declared. No automatic application dispatch is added.
 The [IPv4 module](ipv4.md) parses and packs IPv4 datagrams, their options and
 checksums, and the shared protocol table the way dpkt 1.9.8 does, except one
 declared difference for an IPv6 payload.

@@ -1,13 +1,17 @@
 """HTTP/1.x requests and responses, parsed and packed the way dpkt 1.9.8 does.
 
-Parsing runs in Rust and follows dpkt's line reading, whitespace and length
-rules. There is no stream reassembly and no application dispatch.
+``Request`` and ``Response`` are :class:`octetrail.Packet` subclasses, as in
+dpkt. Headers and bodies are read in Rust and follow dpkt's line reading,
+whitespace and length rules. There is no stream reassembly and no application
+dispatch.
 """
 
 from collections import OrderedDict
+from io import BytesIO
 
 from . import _native
 from .errors import NeedData, UnpackError
+from .packet import Packet
 
 
 def _parse(function, *args):
@@ -17,6 +21,8 @@ def _parse(function, *args):
         raise NeedData(str(error)) from None
     except _native.HttpFormatError as error:
         raise UnpackError(str(error)) from None
+    except _native.HttpOverflowError as error:
+        raise LengthOverflowError(str(error)) from None
 
 
 def _headers(rows):
@@ -25,9 +31,9 @@ def _headers(rows):
 
 
 def _buffer(buf):
-    if not isinstance(buf, (bytes, bytearray, memoryview)):
-        raise TypeError("HTTP unpack requires bytes")
-    return bytes(buf)
+    # dpkt reads through BytesIO, which takes any bytes-like object and
+    # rejects the rest with its own TypeError.
+    return BytesIO(buf).getvalue()
 
 
 def parse_headers(f):
@@ -38,24 +44,58 @@ def parse_headers(f):
     return _headers(rows)
 
 
+class HeaderValueError(UnpackError, ValueError):
+    """A Content-Length that int() rejects; dpkt raises ValueError."""
+
+
+class HeaderTypeError(UnpackError, TypeError):
+    """A repeated Content-Length header; dpkt raises TypeError."""
+
+
+class HeaderAttributeError(UnpackError, AttributeError):
+    """A repeated Transfer-Encoding header; dpkt raises AttributeError."""
+
+
+class LengthOverflowError(UnpackError, OverflowError):
+    """A Content-Length or chunk size outside Py_ssize_t; dpkt raises OverflowError."""
+
+
 def parse_body(f, headers):
     """Return the body read from the file object `f`, given the header dict."""
-    if headers.get("transfer-encoding", "").lower() == "chunked":
-        mode, length = "chunked", 0
-    elif "content-length" in headers:
-        mode, length = "length", max(-1, min(int(headers["content-length"]), 1 << 62))
-    elif "content-type" in headers:
-        mode, length = "end", 0
-    else:
-        mode, length = "empty", 0
-    start = f.tell()
-    body, used = _parse(_native._http_parse_body, _buffer(f.read()), mode, length)
-    f.seek(start + used)
-    return body
+    try:
+        chunked = headers.get("transfer-encoding", "").lower() == "chunked"
+    except AttributeError as error:
+        raise HeaderAttributeError(*error.args) from None
+    if chunked:
+        start = f.tell()
+        body, used = _parse(_native._http_parse_chunked, _buffer(f.read()))
+        f.seek(start + used)
+        return body
+    if "content-length" in headers:
+        try:
+            n = int(headers["content-length"])
+        except ValueError as error:
+            raise HeaderValueError(*error.args) from None
+        except TypeError as error:
+            raise HeaderTypeError(*error.args) from None
+        try:
+            body = f.read(n)
+        except OverflowError as error:
+            raise LengthOverflowError(*error.args) from None
+        if len(body) != n:
+            raise NeedData("short body (missing %d bytes)" % (n - len(body)))
+        return body
+    if "content-type" in headers:
+        return f.read()
+    return b""
 
 
-class Message:
-    """Headers, body and the bytes after the body."""
+class Message(Packet):
+    """HTTP headers and body, the base of Request and Response.
+
+    As in dpkt, ``headers`` is an ordered dict of lower-cased names, a name
+    that repeats holds a list, and ``data`` is whatever follows the body.
+    """
 
     __hdr_defaults__ = {}
     headers = None
@@ -68,64 +108,166 @@ class Message:
             self.headers = OrderedDict()
             self.body = b""
             self.data = b""
-            for key, value in self.__hdr_defaults__.items():
-                setattr(self, key, value)
-            for key, value in kwargs.items():
-                setattr(self, key, value)
+            for k, v in self.__hdr_defaults__.items():
+                setattr(self, k, v)
+            for k, v in kwargs.items():
+                setattr(self, k, v)
 
     def unpack(self, buf, is_body_allowed=True):
-        # Like dpkt, headers are set before the body is read, so they stay set
-        # when the body raises.
-        buf = _buffer(buf)
-        rows, used = _parse(_native._http_parse_headers, buf)
-        self.headers = _headers(rows)
+        f = BytesIO(buf)
+        self.headers = parse_headers(f)
         if is_body_allowed:
-            self.body, self.data = _parse(_native._http_body, buf[used:], rows, True)
+            self.body = parse_body(f, self.headers)
         else:
-            self.body, self.data = b"", buf[used:]
+            self.body = b""
+        self.data = f.read()
 
     def pack_hdr(self):
         return "".join(["%s: %s\r\n" % t for t in self.headers.items()])
-
-    def _start(self):
-        return ""
 
     def __len__(self):
         return len(str(self))
 
     def __str__(self):
-        return "%s%s\r\n%s" % (self._start(), self.pack_hdr(), self.body.decode("utf8", "ignore"))
+        return "%s\r\n%s" % (self.pack_hdr(), self.body.decode("utf8", "ignore"))
 
     def __bytes__(self):
-        return _native._http_pack(self._start(), self.pack_hdr(), self.body or b"")
+        return self.pack_hdr().encode("ascii", "ignore") + b"\r\n" + (self.body or b"")
+
+
+def _line(buf):
+    """The first line, with its line feed, and the rest, as BytesIO.readline reads it."""
+    end = buf.find(b"\n") + 1 or len(buf)
+    return buf[:end], buf[end:]
 
 
 class Request(Message):
-    """An HTTP request: method, uri, version, headers, body and data."""
+    """An HTTP request: method, uri, version, headers, body and data.
 
-    __hdr_defaults__ = {"method": "GET", "uri": "/", "version": "1.0"}
+    As in dpkt, a subclass can set its own ``__methods`` and ``__proto`` under
+    the class name ``Request``, as SIP does.
+    """
+
+    __hdr_defaults__ = {
+        "method": "GET",
+        "uri": "/",
+        "version": "1.0",
+    }
+    __methods = dict.fromkeys(
+        (
+            "GET",
+            "PUT",
+            "ICY",
+            "COPY",
+            "HEAD",
+            "LOCK",
+            "MOVE",
+            "POLL",
+            "POST",
+            "BCOPY",
+            "BMOVE",
+            "MKCOL",
+            "TRACE",
+            "LABEL",
+            "MERGE",
+            "DELETE",
+            "SEARCH",
+            "UNLOCK",
+            "REPORT",
+            "UPDATE",
+            "NOTIFY",
+            "BDELETE",
+            "CONNECT",
+            "OPTIONS",
+            "CHECKIN",
+            "PROPFIND",
+            "CHECKOUT",
+            "CCM_POST",
+            "SUBSCRIBE",
+            "PROPPATCH",
+            "BPROPFIND",
+            "BPROPPATCH",
+            "UNCHECKOUT",
+            "MKACTIVITY",
+            "MKWORKSPACE",
+            "UNSUBSCRIBE",
+            "RPC_CONNECT",
+            "VERSION-CONTROL",
+            "BASELINE-CONTROL",
+        )
+    )
+    __proto = "HTTP"
 
     def unpack(self, buf):
-        buf = _buffer(buf)
-        (self.method, self.uri, self.version), used = _parse(_native._http_request_line, buf)
-        Message.unpack(self, buf[used:])
+        line, rest = _line(_buffer(buf))
+        line = line.decode("ascii", "ignore")
+        l_ = line.strip().split()
+        if len(l_) < 2:
+            raise UnpackError("invalid request: %r" % line)
+        if l_[0] not in self.__methods:
+            raise UnpackError("invalid http method: %r" % l_[0])
+        if len(l_) == 2:
+            # HTTP/0.9 does not specify a version in the request line.
+            self.version = "0.9"
+        else:
+            if not l_[2].startswith(self.__proto):
+                raise UnpackError("invalid http version: %r" % l_[2])
+            self.version = l_[2][len(self.__proto) + 1 :]
+        self.method = l_[0]
+        self.uri = l_[1]
+        Message.unpack(self, rest)
 
-    def _start(self):
-        return "%s %s %s/%s\r\n" % (self.method, self.uri, "HTTP", self.version)
+    def __str__(self):
+        return "%s %s %s/%s\r\n" % (
+            self.method,
+            self.uri,
+            self.__proto,
+            self.version,
+        ) + Message.__str__(self)
+
+    def __bytes__(self):
+        str_out = "%s %s %s/%s\r\n" % (self.method, self.uri, self.__proto, self.version)
+        return str_out.encode("ascii", "ignore") + Message.__bytes__(self)
 
 
 class Response(Message):
-    """An HTTP response: version, status, reason, headers, body and data."""
+    """An HTTP response: version, status, reason, headers, body and data.
 
-    __hdr_defaults__ = {"version": "1.0", "status": "200", "reason": "OK"}
+    As in dpkt, a subclass can set its own ``__proto`` under the class name
+    ``Response``, as SIP does.
+    """
+
+    __hdr_defaults__ = {
+        "version": "1.0",
+        "status": "200",
+        "reason": "OK",
+    }
+    __proto = "HTTP"
 
     def unpack(self, buf):
-        buf = _buffer(buf)
-        (self.version, self.status, self.reason), used = _parse(_native._http_response_line, buf)
-        Message.unpack(self, buf[used:], _native._http_body_allowed(self.status))
+        line, rest = _line(_buffer(buf))
+        l_ = line.strip().decode("ascii", "ignore").split(None, 2)
+        if len(l_) < 2 or not l_[0].startswith(self.__proto) or not l_[1].isdigit():
+            raise UnpackError("invalid response: %r" % line)
+        self.version = l_[0][len(self.__proto) + 1 :]
+        self.status = l_[1]
+        self.reason = l_[2] if len(l_) > 2 else ""
+        # RFC 2616, section 4.3: responses to HEAD, 1xx, 204 and 304 responses
+        # carry no body.
+        is_body_allowed = int(self.status) >= 200 and 204 != int(self.status) != 304
+        Message.unpack(self, rest, is_body_allowed)
 
-    def _start(self):
-        return "%s/%s %s %s\r\n" % ("HTTP", self.version, self.status, self.reason)
+    def __str__(self):
+        return "%s/%s %s %s\r\n" % (
+            self.__proto,
+            self.version,
+            self.status,
+            self.reason,
+        ) + Message.__str__(self)
+
+    def __bytes__(self):
+        str_out = "%s/%s %s %s\r\n" % (self.__proto, self.version, self.status, self.reason)
+        return str_out.encode("ascii", "ignore") + Message.__bytes__(self)
 
 
 def decode(buf):

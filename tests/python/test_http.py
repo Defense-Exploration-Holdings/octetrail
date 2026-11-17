@@ -40,7 +40,7 @@ class HttpTests(unittest.TestCase):
         self.assertIsInstance(http.decode(b"GET / HTTP/1.1\r\n\r\n"), http.Request)
         for error in (MemoryError("allocation"), ValueError("caller")):
             with (
-                patch.object(http._native, "_http_request_line", side_effect=error),
+                patch.object(http.Request, "unpack", side_effect=error),
                 self.assertRaises(type(error)) as result,
             ):
                 http.decode(raw)
@@ -114,6 +114,86 @@ class HttpTests(unittest.TestCase):
         ):
             with self.assertRaises(UnpackError):
                 http.Request(head + raw)
+
+    def test_builtin_errors_are_also_unpack_errors(self):
+        head = b"POST / HTTP/1.1\r\n"
+        for raw, cls, builtin, message in (
+            (
+                b"Content-Length: two\r\n\r\n",
+                http.HeaderValueError,
+                ValueError,
+                "invalid literal for int() with base 10: 'two'",
+            ),
+            (
+                b"Content-Length: 1\r\nContent-Length: 1\r\n\r\nx",
+                http.HeaderTypeError,
+                TypeError,
+                None,
+            ),
+            (
+                b"Transfer-Encoding: a\r\nTransfer-Encoding: b\r\n\r\n",
+                http.HeaderAttributeError,
+                AttributeError,
+                "'list' object has no attribute 'lower'",
+            ),
+        ):
+            with self.assertRaises(cls) as caught:
+                http.Request(head + raw)
+            self.assertIsInstance(caught.exception, UnpackError)
+            self.assertIsInstance(caught.exception, builtin)
+            if message is not None:
+                self.assertEqual(str(caught.exception), message)
+
+    def test_sizes_outside_ssize_t_raise_overflow_errors(self):
+        message = "cannot fit 'int' into an index-sized integer"
+        chunked = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
+        for build, raw in (
+            (http.Request, b"GET / HTTP/1.1\r\nContent-Length: 9223372036854775808\r\n\r\n"),
+            (http.Request, b"GET / HTTP/1.1\r\nContent-Length: -9223372036854775809\r\n\r\n"),
+            (http.Response, chunked + b"8000000000000000\r\nab\r\n0\r\n\r\n"),
+            (http.Response, chunked + b"-8000000000000001\r\nab\r\n0\r\n\r\n"),
+        ):
+            with self.assertRaises(http.LengthOverflowError) as caught:
+                build(raw)
+            self.assertIsInstance(caught.exception, UnpackError)
+            self.assertIsInstance(caught.exception, OverflowError)
+            self.assertEqual(str(caught.exception), message)
+        for build, raw in (
+            (http.Request, b"GET / HTTP/1.1\r\nContent-Length: 9223372036854775807\r\n\r\n"),
+            (http.Response, chunked + b"7fffffffffffffff\r\nab\r\n0\r\n\r\n"),
+        ):
+            with self.assertRaises(NeedData):
+                build(raw)
+
+    def test_error_messages_follow_dpkt(self):
+        head = b"POST / HTTP/1.1\r\n"
+        for raw, message in (
+            (b"Content-Length: 3\r\n\r\nno", "short body (missing 1 bytes)"),
+            (b"Content-Length: -2\r\n\r\nab", "short body (missing -4 bytes)"),
+            (b"bad name: it's\x01\\\r\n\r\n", 'invalid header: "bad name: it\'s\\x01\\\\"'),
+            (b"a b: x\r\n\r\n", "invalid header: 'a b: x'"),
+        ):
+            with self.assertRaises(UnpackError) as caught:
+                http.Request(head + raw)
+            self.assertEqual(str(caught.exception), message)
+
+    def test_subclasses_set_methods_and_protocol(self):
+        class Sip(http.Request):
+            _Request__methods = dict.fromkeys(("INVITE",))
+            _Request__proto = "SIP"
+
+        class SipReply(http.Response):
+            _Response__proto = "SIP"
+
+        r = Sip(b"INVITE sip:a@b SIP/2.0\r\nContent-Length: 2\r\n\r\nhi")
+        self.assertEqual((r.method, r.uri, r.version, r.body), ("INVITE", "sip:a@b", "2.0", b"hi"))
+        self.assertEqual(bytes(r)[:22], b"INVITE sip:a@b SIP/2.0")
+        self.assertEqual(SipReply(b"SIP/2.0 180 Ringing\r\n\r\n").status, "180")
+        with self.assertRaises(UnpackError):
+            Sip(b"GET / HTTP/1.1\r\n\r\n")
+        with self.assertRaises(UnpackError):
+            http.Request(b"INVITE sip:a@b SIP/2.0\r\n\r\n")
+        self.assertIsInstance(r, octetrail.Packet)
 
     def test_int_whitespace_is_ascii_only(self):
         head = b"POST / HTTP/1.1\r\n"
