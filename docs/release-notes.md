@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+PPP and PPPoE now parse and pack the way dpkt 1.9.8 does:
+
+- New modules: `octetrail.ppp` with `PPP` and its protocol table, and
+  `octetrail.pppoe` with `PPPoE`, the session `PPP` class and dpkt's codes.
+- Ethernet decodes type 0x880B as PPP and 0x8864 as PPPoE.
+- A PPP frame whose inner IPv6 packet raises `ip6.FragmentOffsetError` keeps
+  that packet as bytes, where dpkt raises `AttributeError`.
+
+OSPF and SCTP now parse and pack the way dpkt 1.9.8 does:
+
+- New modules: `octetrail.ospf` with `OSPF`, `octetrail.sctp` with `SCTP`,
+  `Chunk` and dpkt's chunk type constants, and `octetrail.crc32c`. Zero OSPF
+  and SCTP checksums are computed when packing.
+- IPv4 and IPv6 decode protocol 89 as OSPF and 132 as SCTP.
+
 AH and ESP now parse and pack the way dpkt 1.9.8 does:
 
 - New modules: `octetrail.ah` with `AH` and `octetrail.esp` with `ESP`.
