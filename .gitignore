@@ -4,3 +4,5 @@ __pycache__/
 *.pyc
 /dist/
 /.ruff_cache/
+/python/octetrail/*.so
+/python/octetrail/*.pyd

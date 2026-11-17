@@ -14,7 +14,11 @@ import struct
 import subprocess
 import sys
 import tempfile
-import tomllib
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10: only release tooling reads TOML.
+    tomllib = None
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]

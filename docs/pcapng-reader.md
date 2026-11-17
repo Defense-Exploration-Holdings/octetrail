@@ -38,9 +38,16 @@ nonzero snap length or the declared original length.
 Rust returns exact unsigned ticks, a decimal/binary resolution descriptor and
 the signed offset, alongside section index, interface id, link type, original
 length and owned bytes. It performs no float conversion. Python yields
-`offset + ticks / float(base ** exponent)` and owned bytes. PCAPNG timestamps
+`offset + ticks / float(base ** exponent)` and owned bytes by default. PCAPNG timestamps
 are floats even at nanosecond resolution, matching both measured dpkt baselines.
 This differs from classic-pcap nanosecond Decimal timestamps.
+
+The optional `decimal_timestamps=True` keyword on `Reader` and `open` instead
+returns exact Decimal values, using each packet's interface clock and signed
+offset. Both binary and decimal clocks have finite decimal representations.
+Conversion uses integer fields directly and is independent of Decimal context.
+See the [Decimal timestamp guide](decimal-timestamps.md). This is an OctetRail
+extension; the default tuple values and types retain their existing behavior.
 
 Python metadata attributes describe the first interface. Its `(timestamp, bytes)`
 tuples omit packet-level interface identity and link type. Mixed-link captures

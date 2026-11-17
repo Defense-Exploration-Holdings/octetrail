@@ -42,8 +42,20 @@ block, interface and scan limits. These are parser policies, not total process
 memory, capture-size, packet-count or time limits. Caller-provided I/O can block.
 
 The [composition subset](composition.md) covers Ethernet II to IPv4 to TCP/UDP,
-opaque IP/TCP options and ordinary IPv4/transport checksum updates. Other
-protocols, full header/block object models and constant inventories,
+opaque IP/TCP options and ordinary IPv4/transport checksum updates. The
+[IPv6/raw-IP subset](ipv6.md) adds base fields, ordered opaque extensions,
+bounded transport dispatch and explicit version selection. Non-atomic IPv6
+fragments remain bytes.
+The [explicit DNS subset](dns.md) covers a standard message header, questions,
+common record fields and bounded name compression. It preserves opaque unknown
+RDATA and documents serialization differences. It does not add transport dispatch.
+The [explicit HTTP subset](http.md) covers HTTP/1.0 and HTTP/1.1 request/response
+fields and Content-Length or Content-Type body selection, with caller lengths
+retained and transfer encoding deferred. No automatic application dispatch is added.
+The [passive TLS subset](tls.md) adds bounded record framing and explicit
+ServerHello metadata, with opaque fallback for other handshake kinds. Its
+record-type dispatch inventory is deliberately partial.
+Other protocols, full header/block object models and constant inventories,
 filter execution, live capture and asynchronous I/O are outside the supported
 API. Import compatibility and distribution compatibility are separate: an
 explicit provider or test-only namespace map cannot satisfy a dpkt dependency

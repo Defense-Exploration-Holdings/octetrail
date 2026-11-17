@@ -47,12 +47,16 @@ from explicit format-specific reading.
 
 The caller retains input ownership after success and failure. Reader timestamps,
 owned bytes, shared iterators, callbacks, metadata and EOF rules are those of the
-selected reader. Nano classic timestamps remain Decimal, while PCAPNG timestamps
-remain floats. No payload decoding or networking is performed.
+selected reader. By default, nano classic timestamps remain Decimal, while PCAPNG
+timestamps remain floats. The optional `decimal_timestamps=True` keyword is
+forwarded to the selected reader for exact Decimal timestamps in either format;
+see the [Decimal timestamp guide](decimal-timestamps.md). No payload decoding or
+networking is performed.
 
 ## Limits and explicit differences
 
-The factory accepts only fileobj, as the pinned 1.9.8 API does. It uses existing
+The common factory call accepts fileobj as the pinned 1.9.8 API does. Its sole
+extra keyword is the OctetRail-only `decimal_timestamps` option. It uses existing
 reader defaults: 16 MiB captured packets, and for PCAPNG a 32 MiB block limit,
 1,024 interfaces and 4,096 scanned blocks per read. A ValueError subclass from
 construction follows the same fallback/combination rule. Call a format-specific

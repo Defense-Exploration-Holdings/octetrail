@@ -7,7 +7,11 @@ import hashlib
 import io
 import json
 import re
-import tomllib
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10: only release tooling reads TOML.
+    tomllib = None
 import zipfile
 from email.parser import BytesParser
 from pathlib import Path
@@ -66,7 +70,12 @@ def check(path, expected_version=None):
             encoded = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=")
             require(digest == "sha256=" + encoded.decode(), "wheel validation failed")
             require(int(length) == len(data), "wheel validation failed")
-            for forbidden in (str(ROOT).encode(), b"/workspace/", b"/home/agent/"):
+            for forbidden in (
+                str(ROOT).encode(),
+                ROOT.as_posix().encode(),
+                b"/workspace/",
+                b"/home/agent/",
+            ):
                 require(forbidden not in data, f"build-machine path in {name}")
             if ".dist-info/sboms/" in name:
                 sbom = json.loads(data)

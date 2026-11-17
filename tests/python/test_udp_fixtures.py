@@ -33,13 +33,15 @@ def good_report(case):
 class UDPFixtureTests(unittest.TestCase):
     def test_literal_and_struct_encoder_match_independent_byte_arithmetic(self):
         literal = CASES["literal"]()
-        expected = b"".join(value.to_bytes(2) for value in (12345, 54321, 12, 0x1234)) + b"rail"
+        expected = (
+            b"".join(value.to_bytes(2, "big") for value in (12345, 54321, 12, 0x1234)) + b"rail"
+        )
         self.assertEqual(literal, expected)
         self.assertEqual(CASES["encode"](CASES["BASE"], b"rail"), expected)
         for case in CASES["cases"]():
             for snapshot in case["expected"].get("snapshots", []):
                 values = snapshot["before"]
-                header = b"".join(values[name].to_bytes(2) for name in CASES["NAMES"])
+                header = b"".join(values[name].to_bytes(2, "big") for name in CASES["NAMES"])
                 self.assertEqual(snapshot["before"], snapshot["after"])
                 self.assertEqual(snapshot["header_hex"], header.hex())
                 self.assertEqual(snapshot["hex"], (header + bytes.fromhex(snapshot["data"])).hex())

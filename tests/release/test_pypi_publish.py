@@ -1,7 +1,6 @@
 """Offline PyPI job gates and data-only preflight checks; never invoke a publisher."""
 
 import ast
-import hashlib
 import json
 import math
 import os
@@ -13,11 +12,11 @@ import unittest
 from pathlib import Path
 
 import yaml
+from release_fixture import NAMES, make_release, write_manifest
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = yaml.load((ROOT / ".github/workflows/release.yml").read_text(), Loader=yaml.BaseLoader)
 JOB = WORKFLOW["jobs"]["pypi"]
-NAMES = {cp: f"octetrail-0.1.0-{cp}-{cp}-manylinux_2_34_x86_64.whl" for cp in ("cp312", "cp313")}
 
 
 def context():
@@ -156,7 +155,7 @@ class PypiGateTests(unittest.TestCase):
             JOB["steps"][1]["with"],
             {
                 "artifact-ids": "${{ needs.build.outputs.artifact-id }}",
-                "path": "dist",
+                "path": "release",
             },
         )
         self.assertEqual(
@@ -166,7 +165,7 @@ class PypiGateTests(unittest.TestCase):
         self.assertEqual(
             JOB["steps"][3]["with"],
             {
-                "packages-dir": "dist/",
+                "packages-dir": "release/dist/",
                 "skip-existing": "false",
                 "verify-metadata": "true",
                 "attestations": "true",
@@ -195,32 +194,33 @@ class PypiPreflightTests(unittest.TestCase):
         changed=False,
         symlink=False,
         missing_dist=False,
+        relisted=False,
         optimized=False,
     ):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            dist = root / "dist"
-            dist.mkdir()
+            digest = make_release(root)
+            dist = root / "release/dist"
             # Synthetic process values only. Do not inherit deployment settings or credentials.
             env = {
                 "PATH": os.defpath,
                 "VERSION": "0.1.0",
                 "RELEASE_TAG": "v0.1.0",
                 "ARTIFACT_ID": "77",
+                "MANIFEST_SHA256": digest,
             }
-            for cp, name in NAMES.items():
-                data = b"ordinary local immutable artifact " + cp.encode()
-                (dist / name).write_bytes(data)
-                env[cp.upper() + "_SHA256"] = hashlib.sha256(data).hexdigest()
             env.update(changes or {})
             if missing:
                 (dist / NAMES[missing]).unlink()
             if extra:
-                (dist / "ordinary.tar.gz").write_bytes(b"excluded sdist fixture")
+                (dist / "ordinary.tar.gz").write_bytes(b"unexpected extra fixture")
             if changed:
-                (dist / NAMES["cp312"]).write_bytes(b"different benign fixture")
+                (dist / NAMES[0]).write_bytes(b"different benign fixture")
+            if relisted:
+                (dist / NAMES[0]).unlink()
+                env["MANIFEST_SHA256"] = write_manifest(root)
             if symlink:
-                path = dist / NAMES["cp312"]
+                path = dist / NAMES[0]
                 original = root / "ordinary.bin"
                 path.rename(original)
                 path.symlink_to(original)
@@ -246,7 +246,7 @@ class PypiPreflightTests(unittest.TestCase):
                     break
             return results
 
-    def test_valid_pair_passes_both_preflight_steps(self):
+    def test_valid_release_passes_both_preflight_steps(self):
         for optimized in (False, True):
             results = self.model(optimized=optimized)
             self.assertEqual(len(results), 2)
@@ -260,8 +260,8 @@ class PypiPreflightTests(unittest.TestCase):
             {"ARTIFACT_ID": ""},
             {"ARTIFACT_ID": "0"},
             {"ARTIFACT_ID": "different"},
-            {"CP312_SHA256": ""},
-            {"CP313_SHA256": "short"},
+            {"MANIFEST_SHA256": ""},
+            {"MANIFEST_SHA256": "short"},
         ):
             results = self.model(changes=changes, optimized=True)
             self.assertEqual(len(results), 1)
@@ -269,8 +269,10 @@ class PypiPreflightTests(unittest.TestCase):
 
     def test_missing_extra_changed_and_nonregular_artifacts_fail_before_publisher(self):
         for case in (
-            {"missing": "cp313"},
+            {"missing": 1},
+            {"relisted": True},
             {"extra": True},
+            {"changes": {"MANIFEST_SHA256": "0" * 64}},
             {"changed": True},
             {"symlink": True},
             {"missing_dist": True},

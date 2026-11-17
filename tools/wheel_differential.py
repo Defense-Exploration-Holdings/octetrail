@@ -6,7 +6,11 @@ import json
 import struct
 import subprocess
 import tempfile
-import tomllib
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10: only release tooling reads TOML.
+    tomllib = None
 from decimal import Decimal
 from pathlib import Path
 

@@ -15,9 +15,6 @@ The fixed-header TCP API is compared with published dpkt 1.9.6 and 1.9.8.
 The TCP core, facade, independent fixtures and tests are original project work;
 dpkt remains the API/behavior reference under the retained BSD license.
 
-CAPE is an external downstream smoke target, not the rewrite target. Its source
-and tests are linked by revision, not redistributed here.
-
 The IPv4 facade follows dpkt's fixed header fields and ordinary checksum
 serialization behavior under the same retained upstream BSD license.
 
@@ -25,3 +22,20 @@ The fixed-header UDP API uses dpkt 1.9.6 and 1.9.8 as behavior references,
 including retained length/checksum fields and opaque payload handling. The UDP
 core, facade, independently constructed fixtures and tests are original work.
 The applicable upstream BSD attribution and license above remain in force.
+
+IPv6 base fields, checksum conventions and Python dispatch behavior use the
+same pinned dpkt references and retained BSD attribution. The bounded Rust
+extension framing, raw selector, opaque extension wrapper and synthetic fixtures
+are original project work; extension-specific dpkt classes are not copied.
+
+The explicit DNS facade uses dpkt 1.9.6 and 1.9.8 as behavior references for
+header/question/record fields. The bounded Rust name and message algorithms,
+structured serialization policy and independent synthetic fixtures are original
+work, under the retained upstream BSD attribution and licensing above.
+
+The HTTP facade follows the pinned dpkt field and rendering APIs under the
+retained BSD attribution. Native framing and synthetic fixtures are original work.
+
+The TLS reference module also credits: Portion Copyright 2012 Google Inc.
+All rights reserved. Its API conventions use the same retained BSD attribution.
+Native framing, resource bounds and synthetic fixtures are original work.
