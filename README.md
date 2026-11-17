@@ -151,6 +151,14 @@ The reader and writer guides describe streaming, timestamp, ownership and
 resource-limit semantics. No performance, whole-library parity or package
 resolver substitution is claimed.
 
+## Sponsors
+
+<a href="https://appliku.com/"><img src="https://raw.githubusercontent.com/Defense-Exploration-Holdings/fuzzyhash-ng/main/assets/sponsors/appliku.png" alt="Appliku" height="64"></a>
+&nbsp;&nbsp;
+<a href="https://github.com/speedpy/speedpy"><img src="https://raw.githubusercontent.com/Defense-Exploration-Holdings/fuzzyhash-ng/main/assets/sponsors/speedpy.png" alt="SpeedPy" height="64"></a>
+
+[Appliku](https://appliku.com/) and [SpeedPy](https://github.com/speedpy/speedpy) support this project.
+
 ## License
 
 Original work is under the [BSD 3-Clause license](LICENSE). dpkt attribution and
