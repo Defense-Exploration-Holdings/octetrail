@@ -2,9 +2,9 @@
 
 ## Unreleased
 
-ATA over Ethernet now parses and packs the way dpkt 1.9.8 does: the new
-`octetrail.aoe`, `octetrail.aoeata` and `octetrail.aoecfg` modules have dpkt's
-classes, command table and constants, and Ethernet decodes type 0x88A2 as AoE.
+Telnet option stripping now works the way dpkt 1.9.8 does: the new
+`octetrail.telnet` module has `strip_options`, scanned in Rust, and dpkt's
+constants.
 
 OSPF and SCTP now parse and pack the way dpkt 1.9.8 does:
 
@@ -20,6 +20,10 @@ AH and ESP now parse and pack the way dpkt 1.9.8 does:
   next header through the IP protocol table.
 - An AH header whose inner IPv6 packet raises `ip6.FragmentOffsetError` keeps
   that packet as bytes, where dpkt raises `AttributeError`.
+
+ATA over Ethernet now parses and packs the way dpkt 1.9.8 does: the new
+`octetrail.aoe`, `octetrail.aoeata` and `octetrail.aoecfg` modules have dpkt's
+classes, command table and constants, and Ethernet decodes type 0x88A2 as AoE.
 
 NetBIOS now parses and packs the way dpkt 1.9.8 does:
 

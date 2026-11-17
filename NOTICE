@@ -50,6 +50,8 @@ retained upstream BSD license.
 
 The IGMP and VRRP facades adapt dpkt's igmp.py and vrrp.py under the same
 retained upstream BSD license.
+The Telnet module adapts dpkt's telnet.py, including its constants, under the
+same retained upstream BSD license. The Rust scan is original work.
 The ATA over Ethernet modules adapt dpkt's aoe.py, aoeata.py and aoecfg.py,
 including their constants, under the same retained upstream BSD license.
 The Portmap, Rx, TNS, Yahoo Messenger, SMB and RFB modules adapt dpkt's

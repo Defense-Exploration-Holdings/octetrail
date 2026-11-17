@@ -1,7 +1,7 @@
 #![no_main]
 //! Ethernet, IPv4/IPv6 and TCP/UDP decoding, starting at every layer.
 use libfuzzer_sys::fuzz_target;
-use octetrail::{cdp, dtp, ethernet, gre, ipv4, ipv6, radius, rip, sctp, stun, tcp, udp, vrrp};
+use octetrail::{cdp, dtp, ethernet, gre, ipv4, ipv6, radius, rip, sctp, stun, tcp, telnet, udp, vrrp};
 
 fn transport(protocol: u8, data: &[u8]) {
     match protocol {
@@ -51,6 +51,13 @@ fuzz_target!(|data: &[u8]| {
         }
     }
     let _ = ethernet::crc32(data);
+    let stripped = telnet::strip_options(data);
+    for (start, end) in stripped.lines {
+        let _ = &data[start..end];
+    }
+    for (_, start, end) in stripped.options {
+        let _ = &data[start..end];
+    }
     if let Ok(found) = radius::attrs(data) {
         for (_, start, end) in &found {
             let _ = &data[*start..*end];
