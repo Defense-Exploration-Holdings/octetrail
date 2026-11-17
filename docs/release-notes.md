@@ -18,6 +18,20 @@ DNS now parses and packs the way dpkt 1.9.8 does:
 - New: `dns.pack_name`, `dns.unpack_name` and the remaining `DNS_RCODE_*`
   constants. `dns.MAX_RECORDS` and `dns.MAX_MESSAGE_BYTES` are removed.
 
+HTTP now parses and packs the way dpkt 1.9.8 does:
+
+- Chunked bodies are decoded. Responses with 1xx, 204 or 304 status keep any
+  bytes after the headers in `data`.
+- Lines follow dpkt's whitespace rules, non-ASCII bytes are dropped from start
+  lines and headers, and HTTP/0.9 requests, extra request-line words and empty
+  reasons parse.
+- Headers pack as they are, with list values as Python list text, and
+  non-ASCII characters are dropped. Header names, values and lengths are no
+  longer checked.
+- New: `http.Message`, `http.parse_headers` and `http.parse_body`. The size
+  limits, `http.ParseLimitError`, `http.LimitError` and the `MAX_*` constants are
+  removed.
+
 ## 0.3.1
 
 First PyPI upload of the 0.3.0 changes. The code is the same as 0.3.0, which

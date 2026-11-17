@@ -1,71 +1,97 @@
-# Offline HTTP messages
+# HTTP messages
 
-`octetrail.http.Request` and `Response` parse one complete supplied HTTP/1.0 or
-HTTP/1.1 buffer. Parsing is explicit: TCP payloads remain bytes until selected by
-the caller. There is no networking, stream reassembly or transfer decoding.
+`octetrail.http` parses and packs HTTP/1.x requests and responses the way dpkt
+1.9.8 does, with the parsing in Rust. Call `http.Request(bytes)` or
+`http.Response(bytes)` on one message's bytes. There is no stream reassembly and
+no automatic dispatch from TCP.
 
 ```python
 from octetrail import http
 
-request = http.Request(b"GET /note HTTP/1.1\r\nHost: example.test\r\n\r\n")
-assert request.headers["host"] == "example.test"
-request.uri = "/other"
-encoded = bytes(request)
+r = http.Request(b"GET /note HTTP/1.1\r\nHost: example.test\r\n\r\n")
+assert (r.method, r.uri, r.version, r.headers["host"]) == ("GET", "/note", "1.1", "example.test")
 ```
 
-Requests expose mutable method, uri, version, headers, body and data. Responses
-expose version, string status, reason, headers, body and data. Defaults are
-GET / HTTP/1.0 and HTTP/1.0 200 OK. A positional bytes buffer takes precedence
-over keywords. Unknown constructor fields and non-bytes input are unsupported.
-Parsed header names are lower-case and retain insertion order. Repeated names
-become lists. Like dpkt, rendering such a list emits its Python list text rather
-than multiple lines. `pack_hdr()` returns header text without the start line or
-final blank line.
+## Fields
 
-Header names require ASCII token characters. Before any rendering, names and
-individual string values are validated, including values in lists. Serialized
-field values and start-line fields permit ASCII 0x20 through 0x7e; control
-characters and non-ASCII text raise PackError. The native parser also rejects
-unsupported controls in decoded values. Heads require CRLF, colon-separated
-headers, a listed reference request method, a three-digit response status and
-HTTP/1.0 or HTTP/1.1. Bodies are opaque bytes.
+- `Request`: `method`, `uri`, `version`, `headers`, `body` and `data`. A new request
+  is `GET / HTTP/1.0`.
+- `Response`: `version`, `status`, `reason`, `headers`, `body` and `data`. A new
+  response is `HTTP/1.0 200 OK`.
+- `Message`: the headers and body without a start line, and the base of both.
 
-Content-Length selects exactly that many body bytes. Otherwise Content-Type
-selects the remainder, following dpkt's convention. Without either, body is empty
-and the remainder is data. Statuses below 200, 204 and 304 suppress response-body
-parsing. HEAD response context is unavailable. Unread data is inspectable and
-excluded from serialization. Mutating a body does not update Content-Length;
-length headers remain the caller's responsibility.
+`headers` is an `OrderedDict` with lower-cased names. A repeated header becomes a
+list of its values. `data` holds the bytes after the body. Keyword arguments set
+attributes on a new message. When a buffer is given, keyword arguments are
+ignored.
 
-`bytes(message)` emits its rendered head and body. Like dpkt, str ignores invalid
-UTF-8 body bytes and len counts that text, which can differ from serialized byte
-length. Use `len(bytes(message))` for a wire-byte count.
+## Parsing
 
-This whole-message API caps all supplied bytes, including unread data, at 1 MiB.
-It also caps the head at 64 KiB, each line including CRLF at 8192 bytes and
-physical header lines at 128. It does not frame a prefix from an arbitrarily
-large backing stream. Stage a bounded message before using this API.
+dpkt reads a message line by line with `BytesIO`, and the same rules apply here:
 
-Truncation raises NeedData and unsupported/malformed parsing raises UnpackError.
-Parse budgets raise http.ParseLimitError, inheriting both UnpackError and the
-existing http.LimitError/ValueError family. Successful start fields remain after
-a later parse failure; other stale fields on reused objects are not cleared.
-Packing retains separate LimitError guards and uses PackError for invalid fields.
-Programmer and allocation errors propagate. These bounds do not promise process
-memory or latency limits; error text and every failed-object state are unspecified.
+- **Request line.** Non-ASCII bytes are dropped and the line is split on
+  whitespace. It needs a method from dpkt's list and a URI. With two words the
+  version is `0.9`. Otherwise the third word must start with `HTTP`, and the
+  version is the text after its fifth character. Further words are ignored.
+- **Status line.** The line is split into at most three parts. The first must
+  start with `HTTP`, and the status must be all digits. The reason is the rest of
+  the line, and it may be empty.
+- **Headers.** Each line is stripped and its non-ASCII bytes are dropped. The
+  headers end at an empty line or at the end of the input. The name is the text
+  before the first colon, lower-cased. It must be one word, and any spaces around
+  that word are kept. A line without a colon gives an empty value.
+- **Body.** The body is chosen in this order:
+  1. `Transfer-Encoding: chunked` (any case) reads chunks until a zero-size
+     chunk. Each size is the first word of its line, read as `int(size, 16)`.
+  2. Otherwise `Content-Length` reads that many bytes, read as `int()`.
+  3. Otherwise `Content-Type` reads to the end.
+  4. Otherwise the body is empty.
 
-`http.decode(bytes)` returns a selected Request/Response or the identical supplied
-bytes for parse failures, including parse-budget refusals. It does not copy an
-over-budget buffer or suppress programmer/allocation errors. It is not a stream
-iterator.
+  Responses with a status below 200, or with 204 or 304, have no body.
 
-Transfer-Encoding framing, chunking/trailers, HTTP/0.9, LF-only or unfinished heads,
-folding, arbitrary method/version extensions, decompression and HTTP/2/3 are
-unsupported. A Transfer-Encoding header on a message without a body, such as a
-304 response, parses and packs unchanged. The public dpkt Message base and file-based parser helpers are absent.
+Whitespace follows Python's rules, which count 0x1c to 0x1f as whitespace in
+text. Integers follow `int()`, which accepts signs, underscores and a `0x` prefix
+on chunk sizes.
 
-`tools/http_differential.py` compares both hash-pinned dpkt 1.9.6/1.9.8 references
-and installed OctetRail. It checks 22 fixtures (18 equal and four explicit scope
-differences), 16 constructors, two defaults, two mutations and partial parse state.
-The whole-message budget/fallback policy and scalar field validation are tested
-separately from those equality cases. These measurements cover the listed API.
+## Errors
+
+- `NeedData`: the body is shorter than Content-Length, the length is negative,
+  or a chunked body ends before its zero-size chunk.
+- `UnpackError`: the start line is invalid, a header name is not one word, or a
+  chunk size is missing or invalid. A Content-Length that is not an integer, and
+  repeated Transfer-Encoding or Content-Length headers, also raise `UnpackError`;
+  dpkt fails on these with `ValueError`, `TypeError` or `AttributeError`.
+
+As in dpkt, a request keeps its start-line fields, and a message keeps its
+headers, when the body raises. There are no size limits: parsing takes time
+linear in the input.
+
+`http.parse_headers(f)` and `http.parse_body(f, headers)` read from a seekable
+file object and leave it after what they used, as dpkt's functions do.
+`http.decode(bytes)` returns a `Response` for bytes starting with `HTTP/`, a
+`Request` otherwise, or the bytes themselves when they do not parse.
+
+## Packing
+
+`bytes()` packs the start line and one `name: value` line per header with
+`%s` formatting, so a list value packs as its Python list text. Then come an
+empty line and the body. Non-ASCII characters in the start line and headers are
+dropped. `data` is not packed, and lengths and chunking are not added or
+checked: the headers pack as they are. `str()` is the same text with the body
+decoded as UTF-8, ignoring errors, and `len()` is the length of `str()`.
+
+## Measured compatibility
+
+The private parity harness decodes dpkt-built requests and responses and
+mutations of them with both libraries. It compares the outcome, every field,
+the headers, the body and the packed bytes. Its seeds include chunked bodies,
+repeated headers, HTTP/0.9 and a 304 response. The
+[fixture driver](../tools/http_differential.py) checks 22 hand-written messages,
+16 constructors, the defaults, two mutations and partial state against dpkt
+1.9.6 and 1.9.8:
+
+```sh
+python3 tools/http_differential.py --oracle-196 ORACLE196/bin/python --oracle-198 ORACLE198/bin/python --python INSTALLED_WHEEL/bin/python
+```
+
+Exception messages can differ.

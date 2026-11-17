@@ -1,4 +1,4 @@
-"""Independent ordinary offline HTTP fixtures and optimized installed probes."""
+"""Independent HTTP fixtures decoded by dpkt 1.9.6, 1.9.8 and OctetRail, which must agree."""
 
 import argparse
 import importlib.metadata
@@ -154,11 +154,9 @@ def cases():
 
 
 def expected(case, module):
+    """What dpkt 1.9.8 reports for a fixture; OctetRail must match it exactly."""
     if case["category"] == "equal":
         return case["expected"]
-    if module == "octetrail":
-        return {"error": "NeedData" if case["id"] == "unfinished-head" else "UnpackError"}
-    # Independently written expectations for the explicitly excluded reference paths.
     if case["id"] == "http09":
         return fixture("", "Request", ("GET", "/note", "0.9"))["expected"]
     if case["id"] in ("lf-only", "unfinished-head"):
@@ -191,26 +189,9 @@ def review_checks(package, provider):
         C.require(
             message.pack_hdr() == name + ": ordinary value\r\n", "ordinary header token rendering"
         )
-    if provider == "octetrail":
-        raw = b"GET /note HTTP/1.1\r\n\r\n" + bytes(H.MAX_MESSAGE_BYTES)
-        C.require(H.decode(raw) is raw, "HTTP whole-message budget fallback identity")
-        try:
-            H.Request(raw)
-        except H.ParseLimitError as error:
-            C.require(
-                all(
-                    isinstance(error, cls)
-                    for cls in (package.UnpackError, ValueError, H.LimitError)
-                ),
-                "HTTP parse budget exception families",
-            )
-        else:
-            raise ValueError("HTTP constructor budget missing")
-    return {
-        "whole_message_input_policy": "bounded raw fallback"
-        if provider == "octetrail"
-        else "unbounded reference"
-    }
+    raw = b"GET /note HTTP/1.1\r\nContent-Type: application/octet-stream\r\n\r\n" + bytes(1 << 21)
+    C.require(len(H.Request(raw).body) == 1 << 21, "large body parses whole")
+    return {"large_body_bytes": 1 << 21}
 
 
 def exercise(package):
@@ -325,7 +306,7 @@ def main():
             {
                 "fixtures": len(cases()),
                 "equal_cases": 18,
-                "declared_fixture_differences": [
+                "fixtures_matching_dpkt_quirks": [
                     c["id"] for c in cases() if c["category"] != "equal"
                 ],
                 "constructors_per_provider": 16,
@@ -333,7 +314,6 @@ def main():
                 "mutations_per_provider": 2,
                 "partial_state_per_provider": 1,
                 "providers": len(providers),
-                "review_http_budget_policy": "constructor raises ParseLimitError; explicit decode retains bytes",
                 "unexpected_mismatches": 0,
             },
             indent=2,

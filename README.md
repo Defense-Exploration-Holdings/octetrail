@@ -30,8 +30,8 @@ The [IPv6 and raw-IP guide](docs/ipv6.md) covers bounded extension framing,
 fragment handling and explicit version dispatch without changing capture iteration.
 The [DNS module](docs/dns.md) parses and packs messages and common record fields
 the way dpkt 1.9.8 does, without changing transport payloads or performing lookups.
-The [explicit HTTP API](docs/http.md) provides bounded HTTP/1.x request/response
-messages with opaque bodies and explicit bytes fallback, without stream reassembly.
+The [HTTP module](docs/http.md) parses and packs HTTP/1.x requests and responses
+the way dpkt 1.9.8 does, without stream reassembly.
 The [passive TLS subset](docs/tls.md) adds explicit record framing and bounded
 ServerHello metadata, with other record and handshake data kept opaque.
 
