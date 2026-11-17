@@ -2,10 +2,9 @@
 
 ## Unreleased
 
-Portmap, Rx, TNS, Yahoo Messenger, SMB and RFB now parse and pack the way dpkt
-1.9.8 does: the new `octetrail.pmap`, `octetrail.rx`, `octetrail.tns`,
-`octetrail.yahoo`, `octetrail.smb` and `octetrail.rfb` modules have dpkt's
-classes and constants.
+ATA over Ethernet now parses and packs the way dpkt 1.9.8 does: the new
+`octetrail.aoe`, `octetrail.aoeata` and `octetrail.aoecfg` modules have dpkt's
+classes, command table and constants, and Ethernet decodes type 0x88A2 as AoE.
 
 OSPF and SCTP now parse and pack the way dpkt 1.9.8 does:
 
@@ -22,13 +21,14 @@ AH and ESP now parse and pack the way dpkt 1.9.8 does:
 - An AH header whose inner IPv6 packet raises `ip6.FragmentOffsetError` keeps
   that packet as bytes, where dpkt raises `AttributeError`.
 
-PPP and PPPoE now parse and pack the way dpkt 1.9.8 does:
+NetBIOS now parses and packs the way dpkt 1.9.8 does:
 
-- New modules: `octetrail.ppp` with `PPP` and its protocol table, and
-  `octetrail.pppoe` with `PPPoE`, the session `PPP` class and dpkt's codes.
-- Ethernet decodes type 0x880B as PPP and 0x8864 as PPPoE.
-- A PPP frame whose inner IPv6 packet raises `ip6.FragmentOffsetError` keeps
-  that packet as bytes, where dpkt raises `AttributeError`.
+- New module: `octetrail.netbios`, with `NS` (a `DNS` subclass), `Session`,
+  `Datagram`, `encode_name`, `decode_name`, `node_to_service_name` and dpkt's
+  constants.
+- A NODE STATUS record with empty resource data raises
+  `netbios.NodeStatusError`, an `UnpackError` and `IndexError` subclass, where
+  dpkt raises `IndexError`.
 
 DNS now follows dpkt 1.9.8's classes:
 
@@ -43,6 +43,14 @@ DNS now follows dpkt 1.9.8's classes:
   `UnpackError` and `UnicodeDecodeError` subclass, where dpkt raises
   `UnicodeDecodeError`. A name cut off by the buffer raises `NeedData` with
   no message, as in dpkt. The parse budget is unchanged.
+
+PPP and PPPoE now parse and pack the way dpkt 1.9.8 does:
+
+- New modules: `octetrail.ppp` with `PPP` and its protocol table, and
+  `octetrail.pppoe` with `PPPoE`, the session `PPP` class and dpkt's codes.
+- Ethernet decodes type 0x880B as PPP and 0x8864 as PPPoE.
+- A PPP frame whose inner IPv6 packet raises `ip6.FragmentOffsetError` keeps
+  that packet as bytes, where dpkt raises `AttributeError`.
 
 RADIUS, RTP, STUN and TPKT now parse and pack the way dpkt 1.9.8 does:
 
@@ -77,14 +85,10 @@ NTP, RIP, TFTP and HSRP now parse and pack the way dpkt 1.9.8 does:
   `tftp.RequestError`, an `UnpackError` and `IndexError` subclass, where dpkt
   raises `IndexError`.
 
-NetBIOS now parses and packs the way dpkt 1.9.8 does:
-
-- New module: `octetrail.netbios`, with `NS` (a `DNS` subclass), `Session`,
-  `Datagram`, `encode_name`, `decode_name`, `node_to_service_name` and dpkt's
-  constants.
-- A NODE STATUS record with empty resource data raises
-  `netbios.NodeStatusError`, an `UnpackError` and `IndexError` subclass, where
-  dpkt raises `IndexError`.
+Portmap, Rx, TNS, Yahoo Messenger, SMB and RFB now parse and pack the way dpkt
+1.9.8 does: the new `octetrail.pmap`, `octetrail.rx`, `octetrail.tns`,
+`octetrail.yahoo`, `octetrail.smb` and `octetrail.rfb` modules have dpkt's
+classes and constants.
 
 ## 0.5.1
 
