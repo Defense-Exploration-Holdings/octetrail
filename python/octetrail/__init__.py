@@ -27,7 +27,7 @@ from .packet import in_cksum as in_cksum
 from .packet import in_cksum_add as in_cksum_add
 from .packet import in_cksum_done as in_cksum_done
 
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 __all__ = [
     "Error",
     "NeedData",
