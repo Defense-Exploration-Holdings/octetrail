@@ -23,6 +23,7 @@ pub use writer::Writer;
 pub mod tcp;
 pub mod tls;
 pub mod udp;
+pub mod vrrp;
 
 /// Default maximum captured packet size, independent of capture snap length.
 pub const DEFAULT_MAX_PACKET_BYTES: u32 = 16 * 1024 * 1024;

@@ -49,3 +49,6 @@ license.
 
 The Ethernet, LLC, STP and IPX facades adapt dpkt's ethernet.py, llc.py, stp.py
 and ipx.py under the same retained upstream BSD license.
+
+The IGMP and VRRP facades adapt dpkt's igmp.py and vrrp.py under the same
+retained upstream BSD license.

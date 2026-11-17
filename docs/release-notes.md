@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+IGMP and VRRP now parse and pack the way dpkt 1.9.8 does:
+
+- New modules: `octetrail.igmp` with `IGMP` and `octetrail.vrrp` with `VRRP`.
+  A zero checksum is computed when packing.
+- IPv6 decodes protocol 2 as IGMP and 112 as VRRP, and 118 as the Spanning
+  Tree `STP` class, as dpkt does.
+
 Ethernet now parses and packs the way dpkt 1.9.8 does:
 
 - Frames: Ethernet II, IEEE 802.3 with LLC, LLC/SNAP and Novell raw 802.3, with
