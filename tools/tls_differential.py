@@ -1,11 +1,20 @@
-"""Independent benign TLS envelopes and passive ServerHello metadata fixtures."""
+"""SSL and TLS records and handshakes run by dpkt 1.9.6, 1.9.8 and OctetRail.
+
+Each provider parses the same records, record runs, handshakes, hellos,
+certificate lists and SSLv2 records, including dpkt's own test vectors, and
+packs them again. OctetRail must match dpkt 1.9.8 on every observation except
+the declared ones; the keys where 1.9.6 differs are listed.
+"""
 
 import argparse
+import importlib
 import importlib.metadata
 import importlib.util
 import json
+import struct
 import subprocess
 import sys
+import warnings
 
 try:
     import tomllib
@@ -24,452 +33,323 @@ SPEC = importlib.util.spec_from_file_location(
 )
 C = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(C)
-RANDOM = bytes(range(32))
-SESSION = b"note"
+
+# dpkt's TestClientHello and TestServerHello vectors, taken from Wireshark.
+CLIENT_HELLO = (
+    "0100019903015008220ce5e0e78b6891afe204498c9363feffbe03235a2d9e05b7d990eb708d"
+    "2009bc0192e008e6fa8fe47998fca91311ba30ddde14a9587dc674b11c3d3e5ed1005200ffc0"
+    "0ac0140088008700390038c00fc00500840035c007c009c011c0130045004400330032c00cc0"
+    "0ec002c0040096004100050004002fc008c01200160013c00dc003000ac006c010c00bc00100"
+    "020001010000fc0000000e000c0000096c6f63616c686f7374000a0008000600170018001900"
+    "0b00020100002300d0a50b2e9f618a9ea9bf493ef49b421835cd2f6b05bbe1179d8edf70d58c"
+    "33d656e8696d36d7e7e0b9d3ecc0e4de339552fa06c64c0fcb550a334bc43944e2739ca342d1"
+    "5a9ebbe981ac87a0d38160507d47af09bdc16c5f0ee4cdceea551539382333226048a026d3a9"
+    "0a0535f4a64236467db8fee22b041af986ad0f253bc369137cd8d8cd061925461d7f4d7895ca"
+    "9a4181ab554dad50360ac31860e971483877c9335ac1300c5e78f3e56f3b8e0fc16358fcacee"
+    "fd5c8d8aaae7b35be116f8832856ca61144fcdd95e071b94d0cf7233740000ffffffffffffff"
+    "ff"
+)
+SERVER_HELLO = (
+    "0200004d03015008220c8ec43c5462315a7c99f5d5b6bff009ad285b51dc18485f352e9fdecd2009"
+    "bc0192e008e6fa8fe47998fca91311ba30ddde14a9587dc674b11c3d3e5ed10002000005ff01000100"
+)
 
 
-def record(kind, version, data):
-    return bytes((kind,)) + version.to_bytes(2, "big") + len(data).to_bytes(2, "big") + data
+def var(lenbytes, data):
+    return len(data).to_bytes(lenbytes, "big") + data
 
 
-def handshake(kind, data):
-    return bytes((kind,)) + len(data).to_bytes(3, "big") + data
+def handshake(kind, body):
+    return bytes([kind]) + len(body).to_bytes(3, "big") + body
 
 
-def hello(session=SESSION, extensions=None, cipher=0x2F):
-    tail = bytes((len(session),)) + session + cipher.to_bytes(2, "big") + b"\0"
+def record(kind, body, version=b"\x03\x03"):
+    return bytes([kind]) + version + struct.pack(">H", len(body)) + body
+
+
+def hello(client=True, session=b"", suites=(0x2F,), extensions=None, odd=False):
+    raw = b"\x03\x03" + bytes(range(32)) + var(1, session)
+    if client:
+        codes = b"".join(struct.pack(">H", c) for c in suites) + (b"\x01" if odd else b"")
+        raw += var(2, codes) + var(1, b"\x00")
+    else:
+        raw += struct.pack(">HB", suites[0], 0)
     if extensions is not None:
-        raw = b"".join(k.to_bytes(2, "big") + len(v).to_bytes(2, "big") + v for k, v in extensions)
-        tail += len(raw).to_bytes(2, "big") + raw
-    return b"\x03\x03" + RANDOM + tail
+        raw += var(2, b"".join(struct.pack(">H", k) + var(2, d) for k, d in extensions))
+    return raw
 
 
 def cases():
-    rows = []
-    for version in (0x300, 0x301, 0x302, 0x303):
-        rows.append(
-            {
-                "id": f"record-{version}",
-                "kind": "record",
-                "wire": record(23, version, b"note").hex(),
-                "type": 23,
-                "version": version,
-                "payload": b"note".hex(),
-            }
-        )
-    for kind, data in (
-        (20, b"\1"),
-        (21, b"\1\0"),
-        (22, handshake(2, hello())),
-        (23, b"\0\xffnote"),
-        (42, b"note"),
-        (23, b""),
-    ):
-        rows.append(
-            {
-                "id": f"record-type-{kind}-{len(data)}",
-                "kind": "record",
-                "wire": record(kind, 0x303, data).hex(),
-                "type": kind,
-                "version": 0x303,
-                "payload": data.hex(),
-            }
-        )
-    for name, session, extensions, cipher in (
-        ("hello", SESSION, None, 0x2F),
-        ("empty-session", b"", None, 0x2F),
-        ("extensions", SESSION, [(43, b"\x03\x04"), (65000, b"note")], 0x2F),
-        ("empty-extensions", SESSION, [], 0x2F),
-        ("unknown-cipher", SESSION, None, 0xFF00),
-    ):
-        rows.append(
-            {
-                "id": name,
-                "kind": "hello",
-                "wire": hello(session, extensions, cipher).hex(),
-                "session": session.hex(),
-                "extensions": None if extensions is None else [[k, v.hex()] for k, v in extensions],
-                "cipher": cipher,
-            }
-        )
-    for kind, body in ((2, hello()), (20, b"synthetic123"), (99, b"note\0\xff")):
-        rows.append(
-            {
-                "id": f"handshake-{kind}",
-                "kind": "handshake",
-                "wire": handshake(kind, body).hex(),
-                "type": kind,
-                "payload": body.hex(),
-            }
-        )
-    for name, wire, kind in (
-        ("partial-record", record(23, 0x303, b"note")[:-1], "record"),
-        ("partial-handshake", handshake(2, hello())[:-1], "handshake"),
-        ("partial-hello", hello()[:-2], "hello"),
-    ):
-        rows.append({"id": name, "kind": kind, "wire": wire.hex(), "error": "NeedData"})
-    return rows
-
-
-def hello_expected(raw, session, extensions, cipher, provider, version):
-    if provider == "dpkt" and version == "1.9.6" and cipher == 0xFF00:
-        return {"error": "SSL3Exception"}
-    return {
-        "version": 0x303,
-        "random": RANDOM.hex(),
-        "session": session,
-        "cipher": cipher,
-        "compression": 0,
-        "extensions": None if provider == "dpkt" and extensions == [] else extensions,
-        "data": raw[34:].hex(),
-        "wire": raw.hex(),
-        "length": len(raw),
+    """(target, hex) by name."""
+    sni = [(0, b"\x00\x0c\x00\x00\x09localhost"), (0xFF01, b"\x00")]
+    certs = var(3, var(3, b"cert one") + var(3, b"two"))
+    found = {
+        "record_dpkt": ("record", b"\x17\x03\x01\x00\x08abcdefghzzzzzzzzzzz"),
+        "record_short": ("record", b"\x17\x03\x01\x00\x08abc"),
+        "record_header_short": ("record", b"\x17\x03"),
+        "change_cipher_spec": ("ccs", b"\x01"),
+        "alert": ("alert", b"\x02\x28"),
+        "handshake_hello_request": ("handshake", b"\x00\x00\x00\x01\xff"),
+        "handshake_client_dpkt": ("handshake", bytes.fromhex("".join(CLIENT_HELLO))),
+        "handshake_server_dpkt": ("handshake", bytes.fromhex("".join(SERVER_HELLO))),
+        "handshake_client_sni": (
+            "handshake",
+            handshake(1, hello(True, b"sess", (0xC02B, 0x1234), sni)),
+        ),
+        "handshake_server_ext": (
+            "handshake",
+            handshake(2, hello(False, bytes(32), (0x1234,), sni)),
+        ),
+        "handshake_certificate": ("handshake", handshake(11, certs)),
+        "handshake_certificate_short": ("handshake", handshake(11, certs[:9])),
+        "handshake_finished": ("handshake", handshake(20, b"verify")),
+        "handshake_unknown_type": ("handshake", handshake(3, b"x")),
+        "handshake_short_body": ("handshake", handshake(1, hello())[:20]),
+        "handshake_header_short": ("handshake", b"\x01\x00"),
+        "client_odd_suites": ("client", hello(True, odd=True)),
+        "client_short_session": ("client", hello(True)[:34] + b"\x05ab"),
+        "client_no_extensions": ("client", hello(True) + b"\x00\x00"),
+        "client_extension_cut": ("client", hello(True, extensions=sni)[:-3]),
+        "client_fixed_short": ("client", b"\x03\x03" + bytes(10)),
+        "server_short": ("server", hello(False)[:36]),
+        "server_fixed_short": ("server", b"\x03\x03"),
+        "certificate_empty": ("certificate", b"\x00\x00\x00"),
+        "certificate_short": ("certificate", b"\x00\x00"),
+        "tls_two_records": ("tls", record(22, b"ab") + record(23, b"cde")),
+        "tls_short_record": ("tls", record(22, b"ab") + record(23, b"cde")[:6]),
+        "tls_header_only": ("tls", b"\x16\x03\x01\x00\x00"),
+        "multi_dpkt": (
+            "multi",
+            bytes.fromhex(
+                "1703010010" + "aa" * 16 + "1703010010" + "bb" * 16 + "1703010010" + "cc" * 4
+            ),
+        ),
+        "multi_bad_version": ("multi", record(22, b"ab") + record(22, b"cd", b"\x09\x09")),
+        "multi_empty": ("multi", b""),
+        "factory_tls": ("factory", record(21, b"\x01\x00")),
+        "factory_ssl2": ("factory", b"\x80\x03abcrest"),
+        "ssl2_long": ("ssl2", b"\x80\x03abcrest"),
+        "ssl2_padded": ("ssl2", b"\x00\x03\x02msgpdtail"),
+        "ssl2_no_pad_byte": ("ssl2", b"\x40\x02"),
+        "extensions": ("extensions", var(2, b"\x00\x0a" + var(2, b"abc") + b"\xff\xff")),
+        "extensions_cut": ("extensions", b"\x00\x09\x00\x0a\x00"),
+        "variable_1": ("variable1", b"\x05ab"),
+        "variable_3": ("variable3", b"\x00\x00\x02xyz"),
+        "variable_short": ("variable2", b"\x00"),
     }
+    return {k: (t, v.hex()) for k, (t, v) in found.items()}
 
 
-def expected(case, provider, version):
-    if "error" in case:
-        return {"error": case["error"]}
-    raw = bytes.fromhex(case["wire"])
-    if case["kind"] == "record":
-        return {
-            "type": case["type"],
-            "version": case["version"],
-            "length": len(bytes.fromhex(case["payload"])),
-            "data": case["payload"],
-            "compressed": True,
-            "encrypted": True,
-            "wire": raw.hex(),
-            "size": len(raw),
-        }
-    if case["kind"] == "hello":
-        return hello_expected(
-            raw, case["session"], case["extensions"], case["cipher"], provider, version
-        )
-    kind = case["type"]
-    if kind == 99 and provider == "dpkt":
-        return {"error": "SSL3Exception"}
-    body = bytes.fromhex(case["payload"])
-    state = (
-        hello_expected(body, SESSION.hex(), None, 0x2F, provider, version)
-        if kind == 2
-        else {
-            "opaque": body.hex(),
-            "class": "TLSUnknownHandshake" if provider == "dpkt" else "bytes",
-        }
-    )
-    return {
-        "type": kind,
-        "length": len(body),
-        "length_bytes": len(body).to_bytes(3, "big").hex(),
-        "data": state,
-        "wire": raw.hex(),
-        "size": len(raw),
-    }
+def as_json(v):
+    if isinstance(v, (bytes, bytearray)):
+        return {"hex": bytes(v).hex()}
+    if isinstance(v, (int, str, bool, type(None))):
+        return v
+    if isinstance(v, (list, tuple)):
+        return [as_json(x) for x in v]
+    if isinstance(v, dict):
+        return {str(k): as_json(x) for k, x in v.items()}
+    return {"repr": repr(v)}
 
 
-def hello_state(h, provider, version):
-    code = (
-        h.cipher_suite_code
-        if provider == "octetrail"
-        else (h.cipher_suite if version == "1.9.6" else h.ciphersuite).code
-    )
-    compression = (
-        h.compression if provider == "dpkt" and version == "1.9.6" else h.compression_method
-    )
-    return {
-        "version": h.version,
-        "random": h.random.hex(),
-        "session": h.session_id.hex(),
-        "cipher": code,
-        "compression": compression,
-        "extensions": [[k, v.hex()] for k, v in h.extensions] if hasattr(h, "extensions") else None,
-        "data": h.data.hex(),
-        "wire": bytes(h).hex(),
-        "length": len(h),
-    }
-
-
-def snapshot(message, kind, package, provider, version):
-    if kind == "record":
-        return {
-            "type": message.type,
-            "version": message.version,
-            "length": message.length,
-            "data": message.data.hex(),
-            "compressed": message.compressed,
-            "encrypted": message.encrypted,
-            "wire": bytes(message).hex(),
-            "size": len(message),
-        }
-    if kind == "hello":
-        return hello_state(message, provider, version)
-    if isinstance(message.data, package.ssl.TLSServerHello):
-        state = hello_state(message.data, provider, version)
-    else:
-        state = {"opaque": bytes(message.data).hex(), "class": type(message.data).__name__}
-    return {
-        "type": message.type,
-        "length": message.length,
-        "length_bytes": message.length_bytes.hex(),
-        "data": state,
-        "wire": bytes(message).hex(),
-        "size": len(message),
-    }
-
-
-def passive_metadata(package, raw):
-    """Select passive fields from a complete supplied metadata envelope."""
-    S = package.ssl
+def attempt(action):
     try:
-        record = S.TLSRecord(raw)
-        parser = S.RECORD_TYPES.get(record.type)
-        if parser is None:
-            return None
-        message = parser(record.data)
-        if isinstance(message, S.TLSHandshake) and isinstance(message.data, S.TLSServerHello):
-            return {"random": message.data.random.hex(), "session": message.data.session_id.hex()}
-    except (package.UnpackError, S.SSL3Exception):
-        return None
-    return None
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            value = action()
+    except Exception as error:  # noqa: BLE001 - exceptions are observations.
+        return {"error": type(error).__name__, "message": str(error)}
+    if caught:
+        return {"value": as_json(value), "warnings": [str(w.message) for w in caught]}
+    return as_json(value)
 
 
-def review_checks(package, provider):
-    S = package.ssl
-    results = {}
-    for label, data, count in (("count", b"note", 1031), ("byte", b"note" * 15000, 20)):
-        frame = record(23, 0x303, data)
-        source = frame * count
-        offset, framed, batches = 0, [], []
-        while offset < len(source):
-            rows, used = S.tls_multi_factory(source[offset:])
-            C.require(used > 0, "complete TLS batch must advance")
-            if provider == "octetrail":
-                C.require(
-                    len(rows) <= S.MAX_RECORDS and used <= S.MAX_MESSAGE_BYTES,
-                    "TLS per-call budgets",
-                )
-            C.require(
-                b"".join(bytes(r) for r in rows) == source[offset : offset + used],
-                "TLS incremental prefix bytes",
-            )
-            framed.extend(rows)
-            offset += used
-            batches.append(len(rows))
-        C.require(len(framed) == count and offset == len(source), "TLS continuation coverage")
-        C.require(bytes(S.TLSRecord(source)) == frame, "record prefix ignores backing-buffer size")
-        results[label + "_records"] = count
-        results[label + "_batches"] = batches
-    short = handshake(20, b"note")
-    backing = short + bytes(1024 * 1024 + 32)
-    C.require(
-        bytes(S.TLSHandshake(backing)) == short, "handshake prefix ignores backing-buffer size"
-    )
-    incomplete = bytes((20,)) + (1024 * 1024).to_bytes(3, "big")
-    try:
-        S.TLSHandshake(incomplete)
-    except package.NeedData:
-        pass
-    else:
-        raise ValueError("missing handshake data precedence")
-    h = S.TLSHandshake(short)
-    h.data = b"ok"
-    C.require(bytes(h) == b"\x14\0\0\x04ok" and h.length == 4, "handshake retained declared length")
-    r = S.TLSRecord()
-    r.compressed = r.encrypted = False
-    r.unpack(record(23, 0x303, b"note"))
-    C.require(r.compressed and r.encrypted, "unpack reference flags")
-    return results
+def snapshot(packet):
+    found = {"class": type(packet).__name__, "repr": repr(packet)}
+    found["len"] = attempt(lambda: len(packet))
+    found["bytes"] = attempt(lambda: bytes(packet).hex())
+    for name in ("records",):
+        if hasattr(packet, name):
+            found[name] = [repr(r) for r in getattr(packet, name)]
+    data = getattr(packet, "data", None)
+    if data is not None and not isinstance(data, (bytes, str)):
+        found["data_class"] = type(data).__name__
+        found["data_fields"] = {k: repr(v) for k, v in sorted(vars(data).items())}
+    return found
 
 
-def exercise(package, provider, version):
-    S = package.ssl
-    output = {}
-    classes = {"record": S.TLSRecord, "handshake": S.TLSHandshake, "hello": S.TLSServerHello}
-    for case in cases():
-        try:
-            obj = classes[case["kind"]](bytes.fromhex(case["wire"]))
-        except (package.NeedData, S.SSL3Exception) as error:
-            output[case["id"]] = {"error": type(error).__name__}
-        else:
-            output[case["id"]] = snapshot(obj, case["kind"], package, provider, version)
-    constructors = 0
-    for case in cases():
-        if case["kind"] != "record" or "error" in case:
-            continue
-        r = S.TLSRecord(
-            type=case["type"],
-            version=case["version"],
-            length=999,
-            data=bytes.fromhex(case["payload"]),
+def parse(ssl, target, raw):
+    def run():
+        if target == "multi":
+            msgs, used = ssl.tls_multi_factory(raw)
+            return {"records": [repr(m) for m in msgs], "used": used}
+        if target == "extensions":
+            return repr(ssl.parse_extensions(raw))
+        if target.startswith("variable"):
+            return repr(ssl.parse_variable_array(raw, int(target[-1])))
+        cls = {
+            "record": ssl.TLSRecord,
+            "ccs": ssl.TLSChangeCipherSpec,
+            "alert": ssl.TLSAlert,
+            "handshake": ssl.TLSHandshake,
+            "client": ssl.TLSClientHello,
+            "server": ssl.TLSServerHello,
+            "certificate": ssl.TLSCertificate,
+            "tls": ssl.TLS,
+            "factory": ssl.SSLFactory,
+            "ssl2": ssl.SSL2,
+        }[target]
+        return snapshot(cls(raw))
+
+    return attempt(run)
+
+
+def constructed(ssl):
+    r = {}
+    for name in (
+        "TLSRecord",
+        "TLSHandshake",
+        "TLSClientHello",
+        "TLSServerHello",
+        "TLSCertificate",
+        "TLSAlert",
+        "TLSChangeCipherSpec",
+        "TLSHelloRequest",
+        "TLS",
+        "SSL2",
+    ):
+        r["default_" + name] = attempt(lambda name=name: snapshot(getattr(ssl, name)()))
+    r["record_fields"] = attempt(
+        lambda: snapshot(
+            ssl.TLSRecord(type=23, version=0x0303, length=99, data=b"app", encrypted=True)
         )
-        C.require(
-            bytes(r).hex() == case["wire"]
-            and r.length == len(r.data)
-            and not r.compressed
-            and not r.encrypted,
-            "TLS record independent constructor",
-        )
-        constructors += 1
-    r = S.TLSRecord()
-    C.require(
-        bytes(r) == bytes(5) and len(r) == 5 and not r.compressed and not r.encrypted,
-        "TLS default record",
     )
-    r = S.TLSRecord(type=23, version=0x303, data=b"note")
-    r.data = b"ok"
-    C.require(
-        bytes(r) == b"\x17\x03\x03\0\x04ok" and len(r) == 7, "TLS record retained length mutation"
+    r["handshake_fields"] = attempt(
+        lambda: snapshot(ssl.TLSHandshake(type=20, length_bytes=b"\x00\x00\x02", data=b"ok"))
     )
-    h = S.TLSHandshake(handshake(2, hello()))
-    h.data.random = bytes(reversed(range(32)))
-    C.require(
-        bytes(h) == handshake(2, b"\x03\x03" + bytes(reversed(range(32))) + hello()[34:]),
-        "TLS fixed metadata mutation",
+    server = ssl.TLSHandshake(bytes.fromhex(SERVER_HELLO)).data
+    r["deprecated"] = attempt(lambda: [repr(server.cipher_suite), server.compression])
+    server.version = 0x0302
+    r["server_repacked"] = attempt(lambda: bytes(server).hex())
+    client = ssl.TLSHandshake(bytes.fromhex("".join(CLIENT_HELLO))).data
+    r["client_suites"] = attempt(
+        lambda: [
+            [c.code, c.name, c.kx, c.auth, c.mac_size, c.block_size, c.pfs, c.aead]
+            for c in client.ciphersuites
+        ]
     )
-    h.data.session_id = b"other"
-    C.require(
-        bytes(h) == handshake(2, b"\x03\x03" + bytes(reversed(range(32))) + hello()[34:]),
-        "TLS raw variable tail precedence",
-    )
-    prefix = record(22, 0x303, handshake(2, hello()))
-    partial = record(23, 0x303, b"note")[:-1]
-    sequences = [
-        b"",
-        prefix,
-        prefix + record(23, 0x303, b"note"),
-        prefix + partial,
-        b"\x17\x03\x03",
-        partial,
+    r["client_extensions"] = attempt(lambda: repr(client.extensions))
+    r["record_types"] = sorted((k, v.__name__) for k, v in ssl.RECORD_TYPES.items())
+    r["handshake_types"] = sorted((k, n, c.__name__) for k, (n, c) in ssl.HANDSHAKE_TYPES.items())
+    r["versions"] = [
+        ssl.SSL3_V,
+        ssl.TLS12_V,
+        sorted(ssl.SSL3_VERSION_BYTES),
+        ssl.ssl3_versions_str[0x0303],
     ]
-    multi = []
-    for raw in sequences:
-        records, used = S.tls_multi_factory(raw)
-        serialized = b"".join(bytes(r) for r in records)
-        expected_used = (
-            0
-            if raw in (b"", b"\x17\x03\x03", partial)
-            else len(prefix)
-            if raw in (prefix, prefix + partial)
-            else len(raw)
-        )
-        C.require(
-            used == expected_used and serialized == raw[:expected_used],
-            "TLS incremental independent framing",
-        )
-        multi.append({"used": used, "remaining": raw[used:].hex(), "records": len(records)})
-    # Selected record/handshake metadata remains bytes at the API boundary.
-    r = S.TLSRecord(prefix)
-    C.require(r.type in S.RECORD_TYPES, "TLS selected record dispatch")
-    wrapped = S.RECORD_TYPES[r.type](r.data)
-    C.require(
-        isinstance(wrapped, S.TLSHandshake) and isinstance(wrapped.data, S.TLSServerHello),
-        "TLS selected metadata class path",
+    r["alerts"] = [
+        len(ssl.alert_description_str),
+        ssl.alert_level_str[2],
+        ssl.TLS1_AD_UNKNOWN_PSK_IDENTITY,
+    ]
+    cs = importlib.import_module(ssl.__name__.rsplit(".", 1)[0] + ".ssl_ciphersuites")
+    r["ciphersuites"] = attempt(
+        lambda: [
+            len(cs.CIPHERSUITES),
+            repr(cs.BY_CODE[0xC02B]),
+            repr(cs.BY_NAME("TLS_RSA_WITH_AES_128_CBC_SHA")),
+            repr(cs.NULL_SUITE),
+            repr(cs.get_unknown_ciphersuite(0x1234)),
+            [repr(s) for s in cs.CIPHERSUITES],
+        ]
     )
-    C.require(
-        wrapped.data.random == RANDOM and wrapped.data.session_id == SESSION,
-        "TLS benign passive metadata demand",
-    )
-    C.require(
-        passive_metadata(package, prefix) == {"random": RANDOM.hex(), "session": SESSION.hex()},
-        "TLS metadata demand",
-    )
-    for value in (
-        prefix[:-1],
-        record(23, 0x303, b"note"),
-        record(22, 0x303, handshake(2, hello())[:-1]),
-    ):
-        C.require(
-            passive_metadata(package, value) is None,
-            "TLS incomplete or unrelated metadata selection",
-        )
+    r["app_data"] = attempt(lambda: [ssl.TLSAppData("note"), isinstance(ssl.TLSAppData("n"), str)])
+    return as_json(r)
+
+
+def exercise(package):
+    ssl = package.ssl
     return {
-        "cases": output,
-        "constructors": constructors,
-        "defaults": 1,
-        "mutations": 3,
-        "multi": multi,
-        "metadata_demand": 4,
-        "record_dispatch_types": sorted(S.RECORD_TYPES),
-        "review": review_checks(package, provider),
+        "cases": {name: parse(ssl, t, bytes.fromhex(h)) for name, (t, h) in cases().items()},
+        "constructed": constructed(ssl),
     }
 
 
 def provenance(module, version):
     package = C.provenance(module, version)
     dist = importlib.metadata.distribution(module)
-    origin = Path(package.ssl.__file__).resolve()
-    C.require(
-        origin.is_relative_to(Path(sys.prefix).resolve())
-        and origin == Path(dist.locate_file(module + "/ssl.py")).resolve(),
-        "unverified TLS origin",
-    )
+    for member in ("ssl", "ssl_ciphersuites"):
+        origin = Path(importlib.import_module(module + "." + member).__file__).resolve()
+        C.require(
+            origin.is_relative_to(Path(sys.prefix).resolve())
+            and origin == Path(dist.locate_file(module + "/" + member + ".py")).resolve(),
+            "unverified TLS module origin",
+        )
     return package
 
 
+# Observations where OctetRail differs from 1.9.8 on purpose: parse errors stay
+# UnpackError. SSL3Exception keeps its name and message, and an SSLv2 record
+# without its padding byte raises SSL2IndexError, an UnpackError and IndexError.
+DECLARED = {
+    "cases.ssl2_no_pad_byte": {"error": "SSL2IndexError", "message": "index out of range"},
+}
+
+
+def flatten(report):
+    return {
+        section + "." + key: found
+        for section, entries in report.items()
+        for key, found in entries.items()
+    }
+
+
 def main():
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--probe", action="store_true")
-    p.add_argument("--module", choices=("dpkt", "octetrail"))
-    p.add_argument("--version")
-    p.add_argument("--oracle-196")
-    p.add_argument("--oracle-198")
-    p.add_argument("--python", action="append", default=[])
-    a = p.parse_args()
-    if a.probe:
-        print(json.dumps(exercise(provenance(a.module, a.version), a.module, a.version)))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--probe", action="store_true")
+    parser.add_argument("--module", choices=("dpkt", "octetrail"))
+    parser.add_argument("--version")
+    parser.add_argument("--oracle-196")
+    parser.add_argument("--oracle-198")
+    parser.add_argument("--python", action="append", default=[])
+    args = parser.parse_args()
+    if args.probe:
+        print(json.dumps(exercise(provenance(args.module, args.version))))
         return
     C.require(
-        a.oracle_196 and a.oracle_198 and a.python,
-        "both pinned references and an installed candidate are required",
+        args.oracle_196 and args.oracle_198 and args.python,
+        "both pins and an installed provider are required",
     )
     version = tomllib.loads((C.ROOT / "pyproject.toml").read_text())["project"]["version"]
     providers = [
-        (a.oracle_196, "dpkt", "1.9.6"),
-        (a.oracle_198, "dpkt", "1.9.8"),
-        *((x, "octetrail", version) for x in a.python),
+        (args.oracle_196, "dpkt", "1.9.6"),
+        (args.oracle_198, "dpkt", "1.9.8"),
+        *((p, "octetrail", version) for p in args.python),
     ]
+    reports = []
     for python, module, v in providers:
-        r = subprocess.run(
+        result = subprocess.run(
             [python, "-B", "-I", "-O", __file__, "--probe", "--module", module, "--version", v],
             capture_output=True,
             text=True,
-            timeout=30,
             check=True,
+            timeout=60,
         )
-        report = json.loads(r.stdout)
-        C.require(
-            report["cases"] == {c["id"]: expected(c, module, v) for c in cases()},
-            "TLS observation mismatch " + module + v,
-        )
-        C.require(
-            report["constructors"] == 10
-            and report["record_dispatch_types"]
-            == ([22] if module == "octetrail" else [20, 21, 22, 23]),
-            "TLS constructor/dispatch inventory mismatch",
-        )
+        reports.append(flatten(json.loads(result.stdout)))
+    reference = reports[1]
+    for (_, module, v), report in zip(providers[2:], reports[2:], strict=True):
+        wrong = sorted(k for k in reference if report.get(k) != DECLARED.get(k, reference[k]))
+        C.require(not wrong, "TLS mismatch " + module + v + ": " + ", ".join(wrong))
     print(
         json.dumps(
             {
-                "fixtures": len(cases()),
-                "shared_equal_cases": 17,
-                "declared_fixture_differences": [
-                    "empty-extensions",
-                    "unknown-cipher",
-                    "handshake-20",
-                    "handshake-99",
-                ],
-                "constructors_per_provider": 10,
-                "defaults_per_provider": 1,
-                "mutations_per_provider": 3,
-                "incremental_sequences_per_provider": 6,
-                "passive_metadata_demand_per_provider": 4,
-                "partial_record_dispatch_inventory": True,
+                "cases": len(cases()),
+                "observations": len(reference),
                 "providers": len(providers),
-                "review_count_stream_records": 1031,
-                "review_byte_stream_records": 20,
-                "review_prefix_and_precedence_checks": 2,
-                "review_stale_length_and_flags": 2,
+                "dpkt_196_differs_on": sorted(
+                    k for k in reference if reports[0].get(k) != reference[k]
+                ),
+                "declared_differences": sorted(DECLARED),
                 "unexpected_mismatches": 0,
             },
             indent=2,

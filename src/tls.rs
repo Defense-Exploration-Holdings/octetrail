@@ -1,303 +1,334 @@
-//! Bounded passive TLS envelopes and ServerHello metadata. No cryptography.
+//! TLS and SSLv2 framing and hello parsing, following `dpkt.ssl` in dpkt 1.9.8.
+//!
+//! Every function returns ranges into the buffer it was given. Where dpkt's
+//! code would hit a `struct.error`, these functions return [`Error::Struct`],
+//! together with whatever dpkt had already stored. No cryptography.
+
 use std::fmt;
-pub const MAX_MESSAGE: usize = 1024 * 1024;
-pub const MAX_RECORD_DATA: usize = 65535;
-pub const MAX_RECORDS: usize = 1024;
-pub const MAX_EXTENSIONS: usize = 128;
+
+/// The record versions `tls_multi_factory` and `SSLFactory` recognize.
+pub const SSL3_VERSIONS: [u16; 4] = [0x0300, 0x0301, 0x0302, 0x0303];
+
+pub type Range = (usize, usize);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
-    Truncated,
-    Format,
-    Version,
-    Limit,
+    /// dpkt would raise `struct.error` here: a fixed-size field is cut short.
+    Struct,
+    /// A record says it is longer than the bytes present.
+    ShortRecord,
+    /// `tls_multi_factory` found a record whose version is not SSL 3 or TLS.
+    Version(usize),
+    /// An SSLv2 record has no padding-length byte.
+    Index,
 }
+
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Truncated => "incomplete TLS envelope or ServerHello",
-            Self::Format => "invalid TLS ServerHello framing in supported subset",
-            Self::Version => "unrecognized TLS record version",
-            Self::Limit => "TLS byte or extension limit exceeded",
-        })
+        match self {
+            Self::Struct => f.write_str("a fixed-size TLS field is cut short"),
+            Self::ShortRecord => f.write_str("TLSRecord data was too short."),
+            Self::Version(at) => write!(f, "bad TLS version at offset {at}"),
+            Self::Index => f.write_str("index out of range"),
+        }
     }
 }
 impl std::error::Error for Error {}
-fn budget(raw: &[u8]) -> Result<(), Error> {
-    if raw.len() > MAX_MESSAGE {
-        Err(Error::Limit)
-    } else {
-        Ok(())
+
+fn clamp(buf: &[u8], start: usize, end: usize) -> Range {
+    (start.min(buf.len()), end.min(buf.len()))
+}
+
+fn shift((a, b): Range, by: usize) -> Range {
+    (a + by, b + by)
+}
+
+/// `parse_variable_array(buf[at:], lenbytes)`: the data range, cut to the
+/// bytes present, and the declared size plus the length bytes.
+pub fn variable_array(buf: &[u8], at: usize, lenbytes: usize) -> Result<(Range, usize), Error> {
+    let start = at.saturating_add(lenbytes);
+    let field = buf
+        .get(at.min(buf.len())..start.min(buf.len()))
+        .unwrap_or_default();
+    if field.len() != lenbytes {
+        return Err(Error::Struct);
+    }
+    let size = field.iter().fold(0usize, |n, b| (n << 8) | usize::from(*b));
+    Ok((
+        clamp(buf, start, start.saturating_add(size)),
+        size + lenbytes,
+    ))
+}
+
+fn u16_at(buf: &[u8], at: usize) -> Result<u16, Error> {
+    match buf.get(at..at.saturating_add(2)) {
+        Some([a, b]) => Ok(u16::from_be_bytes([*a, *b])),
+        _ => Err(Error::Struct),
     }
 }
-fn u16_at(raw: &[u8], pos: usize) -> Result<u16, Error> {
-    let bytes = raw
-        .get(pos..pos.checked_add(2).ok_or(Error::Limit)?)
-        .ok_or(Error::Truncated)?;
-    Ok(u16::from_be_bytes([bytes[0], bytes[1]]))
-}
-#[derive(Debug, Eq, PartialEq)]
-pub struct Record<'a> {
-    pub kind: u8,
-    pub version: u16,
-    pub data: &'a [u8],
-}
-impl<'a> Record<'a> {
-    /// Parse one envelope. Supplied bytes beyond its length are not consumed.
-    pub fn parse(raw: &'a [u8]) -> Result<Self, Error> {
-        // Only the framed record is read; trailing input is not copied or charged.
-        if raw.len() < 5 {
-            return Err(Error::Truncated);
-        }
-        let length = u16_at(raw, 3)? as usize;
-        let data = raw.get(5..5 + length).ok_or(Error::Truncated)?;
-        Ok(Self {
-            kind: raw[0],
-            version: u16_at(raw, 1)?,
-            data,
-        })
-    }
-}
-/// Frame complete records with known legacy versions, leaving a partial tail.
-pub fn records(raw: &[u8]) -> Result<(Vec<(usize, usize)>, usize), Error> {
-    let mut spans = Vec::new();
-    let mut pos = 0;
-    while raw.len() - pos >= 5 {
-        if spans.len() == MAX_RECORDS || MAX_MESSAGE - pos < 5 {
-            break;
-        }
-        let end = pos + 5 + u16_at(raw, pos + 3)? as usize;
-        if end > MAX_MESSAGE {
-            break;
-        }
-        let version = u16_at(raw, pos + 1)?;
-        if !(0x0300..=0x0303).contains(&version) {
-            return Err(Error::Version);
-        }
-        if end > raw.len() {
-            break;
-        }
-        spans.push((pos, end));
-        pos = end;
-    }
-    Ok((spans, pos))
-}
-pub fn record_bytes(kind: u8, version: u16, length: u16, data: &[u8]) -> Result<Vec<u8>, Error> {
-    if data.len() > MAX_RECORD_DATA {
-        return Err(Error::Limit);
-    }
-    let mut out = Vec::with_capacity(5 + data.len());
-    out.push(kind);
-    out.extend_from_slice(&version.to_be_bytes());
-    out.extend_from_slice(&length.to_be_bytes());
-    out.extend_from_slice(data);
-    Ok(out)
-}
-#[derive(Debug, Eq, PartialEq)]
-pub struct Handshake<'a> {
-    pub kind: u8,
-    pub data: &'a [u8],
-}
-impl<'a> Handshake<'a> {
-    pub fn parse(raw: &'a [u8]) -> Result<Self, Error> {
-        if raw.len() < 4 {
-            return Err(Error::Truncated);
-        }
-        let length = ((raw[1] as usize) << 16) | ((raw[2] as usize) << 8) | raw[3] as usize;
-        // A declared length does not consume memory. Report missing bytes first.
-        let data = raw.get(4..4 + length).ok_or(Error::Truncated)?;
-        if length > MAX_MESSAGE - 4 {
-            return Err(Error::Limit);
-        }
-        Ok(Self { kind: raw[0], data })
-    }
-}
-pub fn handshake_bytes(kind: u8, length: u32, data: &[u8]) -> Result<Vec<u8>, Error> {
-    if length as usize > MAX_MESSAGE - 4 || data.len() > MAX_MESSAGE - 4 {
-        return Err(Error::Limit);
-    }
-    let mut out = Vec::with_capacity(4 + data.len());
-    out.push(kind);
-    out.extend_from_slice(&length.to_be_bytes()[1..]);
-    out.extend_from_slice(data);
-    Ok(out)
-}
-#[derive(Debug, Eq, PartialEq)]
-pub struct ServerHello<'a> {
-    pub version: u16,
-    pub random: &'a [u8],
-    pub session_id: &'a [u8],
-    pub cipher_code: u16,
-    pub compression: u8,
-    pub extensions: Option<Vec<(u16, &'a [u8])>>,
-    /// Entire variable tail, retained as the authoritative serialization input.
-    pub data: &'a [u8],
-}
-impl<'a> ServerHello<'a> {
-    pub fn parse(raw: &'a [u8]) -> Result<Self, Error> {
-        budget(raw)?;
-        if raw.len() < 35 {
-            return Err(Error::Truncated);
-        }
-        let session_len = raw[34] as usize;
-        if session_len > 32 {
-            return Err(Error::Format);
-        }
-        let session_end = 35 + session_len;
-        let session_id = raw.get(35..session_end).ok_or(Error::Truncated)?;
-        let cipher_code = u16_at(raw, session_end)?;
-        let compression = *raw.get(session_end + 2).ok_or(Error::Truncated)?;
-        let mut pos = session_end + 3;
-        let extensions = if pos == raw.len() {
-            None
-        } else {
-            let n = u16_at(raw, pos)? as usize;
-            pos += 2;
-            if n > raw.len() - pos {
-                return Err(Error::Truncated);
-            }
-            if n != raw.len() - pos {
-                return Err(Error::Format);
-            }
-            let mut rows = Vec::new();
-            while pos < raw.len() {
-                if rows.len() == MAX_EXTENSIONS {
-                    return Err(Error::Limit);
-                }
-                let kind = u16_at(raw, pos)?;
-                let length = u16_at(raw, pos + 2)? as usize;
-                pos += 4;
-                let payload = raw.get(pos..pos + length).ok_or(Error::Truncated)?;
-                rows.push((kind, payload));
-                pos += length;
-            }
-            Some(rows)
+
+/// `parse_extensions(buf[at:])`. On an error, the extensions read so far are
+/// returned with it.
+pub fn extensions(buf: &[u8], at: usize) -> (Vec<(u16, Range)>, Option<Error>) {
+    let mut found = Vec::new();
+    let Ok(total) = u16_at(buf, at) else {
+        return (found, Some(Error::Struct));
+    };
+    let mut pointer = 2usize;
+    while pointer < usize::from(total) {
+        let kind = match u16_at(buf, at.saturating_add(pointer)) {
+            Ok(kind) => kind,
+            Err(e) => return (found, Some(e)),
         };
-        Ok(Self {
-            version: u16_at(raw, 0)?,
-            // The complete 35-byte prefix was validated before reading session_len.
-            random: &raw[2..34],
-            session_id,
-            cipher_code,
-            compression,
-            extensions,
-            data: &raw[34..],
-        })
+        pointer += 2;
+        match variable_array(buf, at.saturating_add(pointer), 2) {
+            Ok((data, parsed)) => {
+                found.push((kind, data));
+                pointer += parsed;
+            }
+            Err(e) => return (found, Some(e)),
+        }
+    }
+    (found, None)
+}
+
+/// The variable part of a ClientHello or ServerHello, as dpkt stores it. A
+/// field is `None` when dpkt did not reach it.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Hello {
+    pub session_id: Option<Range>,
+    /// ClientHello cipher suite codes, or the one ServerHello code.
+    pub ciphersuites: Option<Vec<u16>>,
+    /// ClientHello compression methods, or the one ServerHello method.
+    pub compression: Option<Range>,
+    pub extensions: Option<Vec<(u16, Range)>>,
+    pub error: Option<Error>,
+}
+
+/// The fixed ClientHello and ServerHello header: version and random.
+pub const HELLO_LEN: usize = 34;
+
+impl Hello {
+    fn extensions_at(&mut self, body: &[u8], at: usize) {
+        // dpkt parses extensions only when at least six bytes follow.
+        if body.len().saturating_sub(at) >= 6 {
+            let (found, error) = extensions(body, at);
+            if error.is_none() {
+                self.extensions = Some(found);
+            }
+            self.error = error;
+        }
+    }
+
+    /// `TLSClientHello.unpack` after its fixed header, on `body = buf[34:]`.
+    pub fn client(body: &[u8]) -> Self {
+        let mut hello = Self::default();
+        let run = |hello: &mut Self| -> Result<(), Error> {
+            let (session, mut pointer) = variable_array(body, 0, 1)?;
+            hello.session_id = Some(session);
+            let (suites, parsed) = variable_array(body, pointer, 2)?;
+            pointer += parsed;
+            let raw = &body[suites.0..suites.1];
+            if raw.len() % 2 != 0 {
+                return Err(Error::Struct);
+            }
+            hello.ciphersuites = Some(
+                raw.chunks_exact(2)
+                    .map(|c| u16::from_be_bytes([c[0], c[1]]))
+                    .collect(),
+            );
+            let (methods, parsed) = variable_array(body, pointer, 1)?;
+            pointer += parsed;
+            hello.compression = Some(methods);
+            hello.extensions_at(body, pointer);
+            Ok(())
+        };
+        if let Err(e) = run(&mut hello) {
+            hello.error = Some(e);
+        }
+        hello
+    }
+
+    /// `TLSServerHello.unpack` after its fixed header, on `body = buf[34:]`.
+    pub fn server(body: &[u8]) -> Self {
+        let mut hello = Self::default();
+        let run = |hello: &mut Self| -> Result<(), Error> {
+            let (session, mut pointer) = variable_array(body, 0, 1)?;
+            hello.session_id = Some(session);
+            hello.ciphersuites = Some(vec![u16_at(body, pointer)?]);
+            pointer += 2;
+            if pointer >= body.len() {
+                return Err(Error::Struct);
+            }
+            hello.compression = Some((pointer, pointer + 1));
+            pointer += 1;
+            hello.extensions_at(body, pointer);
+            Ok(())
+        };
+        if let Err(e) = run(&mut hello) {
+            hello.error = Some(e);
+        }
+        hello
     }
 }
-pub fn hello_bytes(version: u16, random: &[u8], data: &[u8]) -> Result<Vec<u8>, Error> {
-    if random.len() != 32 {
-        return Err(Error::Format);
+
+/// `TLSCertificate.unpack`. The outer error means the list length itself is
+/// cut short. Otherwise the certificates read are returned with the error that
+/// stopped the loop, if any.
+pub fn certificates(body: &[u8]) -> Result<(Vec<Range>, Option<Error>), Error> {
+    let (_, total) = variable_array(body, 0, 3)?;
+    let mut found = Vec::new();
+    let mut pointer = 3;
+    while pointer < total {
+        match variable_array(body, pointer, 3) {
+            Ok((cert, parsed)) => {
+                found.push(cert);
+                pointer += parsed;
+            }
+            Err(e) => return Ok((found, Some(e))),
+        }
     }
-    if data.len() > MAX_MESSAGE - 34 {
-        return Err(Error::Limit);
+    Ok((found, None))
+}
+
+/// One TLS record header and its data range, as `TLSRecord.unpack` reads it.
+/// `buf` holds at least five bytes.
+fn record(buf: &[u8], at: usize) -> Result<Range, Error> {
+    let length = usize::from(u16_at(buf, at + 3)?);
+    let data = clamp(buf, at + 5, at + 5 + length);
+    if data.1 - data.0 != length {
+        return Err(Error::ShortRecord);
     }
-    let mut out = Vec::with_capacity(34 + data.len());
-    out.extend_from_slice(&version.to_be_bytes());
-    out.extend_from_slice(random);
-    out.extend_from_slice(data);
-    Ok(out)
+    Ok(data)
+}
+
+/// `TLS.unpack`: the record spans read and the error that stopped it, if any.
+/// The first span starts at 0, so it includes the five header bytes `TLS`
+/// itself unpacked, as in dpkt.
+pub fn tls_records(buf: &[u8]) -> (Vec<Range>, Option<Error>) {
+    let mut spans = Vec::new();
+    let mut pointer = 0usize;
+    while pointer < buf.len().saturating_sub(5) {
+        let Ok(length) = u16_at(buf, pointer + 3) else {
+            return (spans, Some(Error::Struct));
+        };
+        let end = pointer + 5 + usize::from(length);
+        // TLSRecord(buf[pointer:end]) needs its declared data within the slice.
+        if end > buf.len() {
+            return (spans, Some(Error::ShortRecord));
+        }
+        spans.push((pointer, end));
+        pointer = end;
+    }
+    (spans, None)
+}
+
+/// `tls_multi_factory`: the complete record spans and the bytes they use.
+pub fn multi_factory(buf: &[u8]) -> Result<(Vec<Range>, usize), Error> {
+    let mut spans = Vec::new();
+    let mut i = 0usize;
+    while i + 5 <= buf.len() {
+        let version = u16::from_be_bytes([buf[i + 1], buf[i + 2]]);
+        if !SSL3_VERSIONS.contains(&version) {
+            return Err(Error::Version(i));
+        }
+        match record(buf, i) {
+            Ok((_, end)) => {
+                spans.push((i, end));
+                i = end;
+            }
+            Err(_) => break,
+        }
+    }
+    Ok((spans, i))
+}
+
+/// The pieces of an SSLv2 record after its two-byte header, as `SSL2.unpack`
+/// splits `data = buf[2:]`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Ssl2 {
+    pub len: u16,
+    pub msg: Range,
+    pub pad: Option<Range>,
+    pub rest: Range,
+}
+
+pub fn ssl2(len: u16, data: &[u8]) -> Result<Ssl2, Error> {
+    if len & 0x8000 != 0 {
+        let n = usize::from(len & 0x7fff);
+        let msg = clamp(data, 0, n);
+        return Ok(Ssl2 {
+            len: len & 0x7fff,
+            msg,
+            pad: None,
+            rest: (msg.1, data.len()),
+        });
+    }
+    let n = usize::from(len & 0x3fff);
+    let padlen = usize::from(*data.first().ok_or(Error::Index)?);
+    let msg = clamp(data, 1, 1 + n);
+    let pad = clamp(data, 1 + n, 1 + n + padlen);
+    Ok(Ssl2 {
+        len: len & 0x3fff,
+        msg,
+        pad: Some(pad),
+        rest: (pad.1, data.len()),
+    })
+}
+
+/// Move every range of a hello by `by` bytes.
+pub fn shift_hello(mut hello: Hello, by: usize) -> Hello {
+    hello.session_id = hello.session_id.map(|r| shift(r, by));
+    hello.compression = hello.compression.map(|r| shift(r, by));
+    if let Some(found) = &mut hello.extensions {
+        found.iter_mut().for_each(|(_, r)| *r = shift(*r, by));
+    }
+    hello
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn hello() -> Vec<u8> {
-        let mut out = vec![3, 3];
-        out.extend(0..32);
-        out.extend_from_slice(&[4, b'n', b'o', b't', b'e', 0, 0x2f, 0]);
-        out
-    }
+
     #[test]
-    fn ordinary_record_and_incremental_tail() {
-        let raw = [23, 3, 3, 0, 4, b'n', b'o', b't', b'e'];
-        let r = Record::parse(&raw).unwrap();
-        assert_eq!(r.kind, 23);
-        assert_eq!(r.version, 0x303);
-        assert_eq!(r.data, b"note");
-        assert_eq!(record_bytes(23, 0x303, 4, b"note").unwrap(), raw);
-        let mut joined = raw.to_vec();
-        joined.extend_from_slice(&[22, 3, 3, 0, 4, 2]);
-        assert_eq!(records(&joined).unwrap(), (vec![(0, 9)], 9));
-        assert_eq!(Record::parse(&joined[9..]), Err(Error::Truncated));
+    fn variable_arrays_report_the_declared_size() {
+        assert_eq!(variable_array(b"\x05ab", 0, 1), Ok(((1, 3), 6)));
+        assert_eq!(variable_array(b"\x00\x00\x02xyz", 0, 3), Ok(((3, 5), 5)));
+        assert_eq!(variable_array(b"\x00", 0, 2), Err(Error::Struct));
+        assert_eq!(variable_array(b"", 7, 1), Err(Error::Struct));
     }
+
     #[test]
-    fn unknown_handshake_stays_opaque() {
-        let raw = [99, 0, 0, 4, 0, 255, b'n', b'o'];
-        let h = Handshake::parse(&raw).unwrap();
-        assert_eq!(h.kind, 99);
-        assert_eq!(h.data, &[0, 255, b'n', b'o']);
-        assert_eq!(handshake_bytes(h.kind, 4, h.data).unwrap(), raw);
-    }
-    #[test]
-    fn independent_hello_and_opaque_extensions() {
-        let mut raw = hello();
-        raw.extend_from_slice(&[0, 8, 0xfd, 0xe8, 0, 4, b'n', b'o', b't', b'e']);
-        let h = ServerHello::parse(&raw).unwrap();
-        assert_eq!(h.session_id, b"note");
-        assert_eq!(h.random, &(0..32).collect::<Vec<u8>>());
-        assert_eq!(h.cipher_code, 0x2f);
-        assert_eq!(h.compression, 0);
-        assert_eq!(h.extensions, Some(vec![(65000, &b"note"[..])]));
-        assert_eq!(hello_bytes(h.version, h.random, h.data).unwrap(), raw);
-    }
-    #[test]
-    fn finite_limits_and_ordinary_partial_messages() {
-        assert_eq!(Record::parse(&[23, 3, 3, 0]), Err(Error::Truncated));
-        assert_eq!(Handshake::parse(&[2, 0, 0, 4, 3]), Err(Error::Truncated));
-        assert_eq!(ServerHello::parse(&hello()[..36]), Err(Error::Truncated));
-        assert_eq!(records(&[23, 3, 4, 0, 0]), Err(Error::Version));
-        assert!(records(&[23, 3, 3, 0, 0].repeat(MAX_RECORDS)).is_ok());
-        let input = [23, 3, 3, 0, 0].repeat(MAX_RECORDS + 1);
-        let (spans, used) = records(&input).unwrap();
-        assert_eq!((spans.len(), used), (MAX_RECORDS, 5 * MAX_RECORDS));
-        assert_eq!(records(&input[used..]).unwrap(), (vec![(0, 5)], 5));
+    fn extensions_stop_at_the_declared_total() {
+        // The loop compares the pointer with the total, not total + 2.
+        let buf = b"\x00\x04\x00\x0a\x00\x00\xff\xff";
+        assert_eq!(extensions(buf, 0), (vec![(10, (6, 6))], None));
         assert_eq!(
-            record_bytes(23, 0x303, 0, &vec![0; MAX_RECORD_DATA + 1]),
-            Err(Error::Limit)
+            extensions(b"\x00\x09\x00\x0a\x00", 0).1,
+            Some(Error::Struct)
         );
-        let mut h = hello();
-        let ext = [0xfd, 0xe8, 0, 0].repeat(MAX_EXTENSIONS);
-        h.extend_from_slice(&(ext.len() as u16).to_be_bytes());
-        h.extend_from_slice(&ext);
-        assert!(ServerHello::parse(&h).is_ok());
-        let ext = [0xfd, 0xe8, 0, 0].repeat(MAX_EXTENSIONS + 1);
-        let mut h = hello();
-        h.extend_from_slice(&(ext.len() as u16).to_be_bytes());
-        h.extend_from_slice(&ext);
-        assert_eq!(ServerHello::parse(&h), Err(Error::Limit));
     }
+
     #[test]
-    fn large_backing_buffers_only_charge_framed_bytes() {
-        let frame = record_bytes(23, 0x303, 60000, &vec![b'n'; 60000]).unwrap();
-        let input = frame.repeat(20);
-        assert!(input.len() > MAX_MESSAGE);
-        let first = Record::parse(&input).unwrap();
-        assert_eq!(first.data.len(), 60000);
-        assert_eq!(first.data.as_ptr(), input[5..].as_ptr());
-        let (spans, used) = records(&input).unwrap();
-        assert_eq!(spans.len(), MAX_MESSAGE / frame.len());
-        assert_eq!(used, spans.len() * frame.len());
-        assert_eq!(records(&input[used..]).unwrap().1, input.len() - used);
-        let mut raw = vec![20, 0, 0, 4, b'n', b'o', b't', b'e'];
-        raw.resize(MAX_MESSAGE + 32, 0);
-        assert_eq!(Handshake::parse(&raw).unwrap().data, b"note");
-    }
-    #[test]
-    fn length_precedence_format_and_retained_pack_fields() {
-        let length = MAX_MESSAGE as u32;
-        let mut raw = vec![20];
-        raw.extend_from_slice(&length.to_be_bytes()[1..]);
-        assert_eq!(Handshake::parse(&raw), Err(Error::Truncated));
-        raw.resize(4 + MAX_MESSAGE, 0);
-        assert_eq!(Handshake::parse(&raw), Err(Error::Limit));
-        let mut h = hello();
-        h[34] = 33;
-        assert_eq!(ServerHello::parse(&h), Err(Error::Format));
+    fn records_and_factory() {
+        let rec = b"\x16\x03\x01\x00\x02hi";
+        let mut two = rec.to_vec();
+        two.extend_from_slice(b"\x17\x03\x03\x00\x05ab");
+        assert_eq!(multi_factory(&two), Ok((vec![(0, 7)], 7)));
         assert_eq!(
-            record_bytes(23, 0x303, 4, b"ok").unwrap(),
-            b"\x17\x03\x03\0\x04ok"
+            multi_factory(b"\x16\x09\x09\x00\x00"),
+            Err(Error::Version(0))
         );
-        assert_eq!(handshake_bytes(20, 4, b"ok").unwrap(), b"\x14\0\0\x04ok");
+        assert_eq!(tls_records(rec), (vec![(0, 7)], None));
+        assert_eq!(tls_records(&two).1, Some(Error::ShortRecord));
+    }
+
+    #[test]
+    fn ssl2_split() {
+        let s = ssl2(0x8003, b"abcdef").unwrap();
+        assert_eq!((s.len, s.msg, s.rest), (3, (0, 3), (3, 6)));
+        let s = ssl2(0x0002, b"\x01abpz").unwrap();
+        assert_eq!((s.msg, s.pad, s.rest), ((1, 3), Some((3, 4)), (4, 5)));
+        assert_eq!(ssl2(0x0002, b""), Err(Error::Index));
     }
 }
