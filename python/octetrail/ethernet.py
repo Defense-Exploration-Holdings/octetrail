@@ -66,7 +66,7 @@ class Ethernet:
         elif self.type == ETH_TYPE_IP6:
             try:
                 decoded = ip6.IP6(self.data)
-            except (UnpackError, NotImplementedError, ip6.LimitError):
+            except (UnpackError, NotImplementedError):
                 pass
             else:
                 self.data = self.ip6 = decoded

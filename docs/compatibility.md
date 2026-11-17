@@ -43,9 +43,8 @@ memory, capture-size, packet-count or time limits. Caller-provided I/O can block
 
 The [composition subset](composition.md) covers Ethernet II to IPv4 to TCP/UDP,
 opaque IP/TCP options and ordinary IPv4/transport checksum updates. The
-[IPv6/raw-IP subset](ipv6.md) adds base fields, ordered opaque extensions,
-bounded transport dispatch and explicit version selection. Non-atomic IPv6
-fragments remain bytes.
+[IPv6 module](ipv6.md) parses and packs IPv6 and its extension headers the way
+dpkt 1.9.8 does. Payload protocols without an OctetRail module stay bytes.
 The [DNS module](dns.md) parses and packs messages, questions, records and
 compressed names the way dpkt 1.9.8 does. It does not add transport dispatch.
 The [HTTP module](http.md) parses and packs HTTP/1.x requests and responses,

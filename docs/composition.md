@@ -10,9 +10,8 @@ dispatch. ARP remains unsupported. The separate [DNS API](dns.md) must be called
 explicitly and does not change transport payloads. This API performs no network
 operation.
 
-The separate [IPv6/raw-IP contract](ipv6.md) covers EtherType `0x86dd`, bounded
-opaque extension framing and its stricter non-atomic fragment policy. The IPv4
-rules below remain unchanged.
+The separate [IPv6 guide](ipv6.md) covers EtherType `0x86dd`, the extension
+headers and their fragment rule. The IPv4 rules below remain unchanged.
 
 IPv4 parsing follows dpkt 1.9.8: a declared length below the header, a zero
 length or a datagram cut off by the capture is sliced from the bytes present, so

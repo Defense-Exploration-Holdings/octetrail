@@ -1,24 +1,23 @@
-"""Bounded offline IPv6 and raw dispatch using independently encoded bytes."""
+"""IPv6 and its extension headers, parsed and packed the way dpkt 1.9.8 does."""
 
 import importlib.util
 import io
 import struct
 import subprocess
 import sys
+import time
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
-import octetrail
 from octetrail import (
     NeedData,
     PackError,
+    Packet,
     UnpackError,
     ethernet,
     ip,
     ip6,
     pcap,
-    pcapng,
     raw,
     tcp,
     udp,
@@ -28,185 +27,160 @@ ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("ipv6_fixture", ROOT / "tools/ipv6_differential.py")
 F = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(F)
+MAC = bytes.fromhex("02aabbccddee02112233445586dd")
+
+
+def case(name):
+    return bytes.fromhex(F.cases()[name])
 
 
 class IPv6Tests(unittest.TestCase):
-    def test_literal_capture_records_keep_iteration_and_explicit_raw_selection(self):
-        ipv6 = bytes.fromhex(F.fixtures()[0]["wire"])
-        ipv4 = F.C.encode({"kind": "opaque", "p": 253, "payload": "6e6f7465"})[14:]
+    def test_fixture_runs_on_the_installed_package(self):
+        import octetrail
 
-        def block(kind, body):
-            size = 12 + len(body)
-            return struct.pack("<II", kind, size) + body + struct.pack("<I", size)
+        report = F.exercise(octetrail)
+        self.assertEqual(report["cases"]["dpkt_tcp"]["data_class"], "TCP")
+        self.assertEqual(report["constructed"]["protosw"], [0, 4, 6, 17, 41])
 
-        for link in (1, 101):
-            frames = [F.MAC + ipv6, F.MAC[:12] + b"\x08\x00" + ipv4] if link == 1 else [ipv6, ipv4]
-            classic = struct.pack("<IHHIIII", 0xA1B2C3D4, 2, 4, 0, 0, 65535, link)
-            ng = block(0x0A0D0D0A, struct.pack("<IHHq", 0x1A2B3C4D, 1, 0, -1))
-            ng += block(1, struct.pack("<HHI", link, 0, 65535))
-            for frame in frames:
-                classic += struct.pack("<IIII", 1, 0, len(frame), len(frame)) + frame
-                ng += block(
-                    6,
-                    struct.pack("<IIIII", 0, 0, 1000000, len(frame), len(frame))
-                    + frame
-                    + bytes(-len(frame) % 4),
-                )
-            for reader, capture in ((pcap.Reader, classic), (pcapng.Reader, ng)):
-                parsed = reader(io.BytesIO(capture))
-                self.assertEqual(parsed.datalink(), link)
-                rows = list(parsed)
-                self.assertEqual(rows, [(1.0, frame) for frame in frames])
-                packets = [
-                    ethernet.Ethernet(wire).data if link == 1 else raw.decode(wire)
-                    for _, wire in rows
-                ]
-                self.assertEqual([type(p) for p in packets], [ip6.IP6, ip.IP])
+    def test_dpkt_vectors(self):
+        s = case("dpkt_tcp")
+        packet = ip6.IP6(s)
+        self.assertEqual((packet.v, packet.fc, packet.flow, packet.p), (6, 0, 0, 6))
+        self.assertIs(packet.tcp, packet.data)
+        packet.data.sum = 0
+        self.assertEqual(bytes(packet), s)
+        self.assertEqual(dict(packet)["src"], s[8:24])
+        s = case("dpkt_routing")
+        packet = ip6.IP6(s)
+        self.assertEqual(len(packet.extension_hdrs[43].addresses), 2)
+        self.assertIsInstance(packet.tcp, tcp.TCP)
+        self.assertEqual(bytes(packet), s)
+        s = case("dpkt_fragment")
+        self.assertEqual(bytes(ip6.IP6(s)), s)
 
-    def test_independent_cases_fields_exact_bytes_and_declared_differences(self):
-        actual = F.exercise(octetrail, "octetrail")
+    def test_extension_header_classes(self):
+        fh = ip6.IP6FragmentHeader(b"\x06\xee\xff\xf9\x00\x00\xff\xff")
+        self.assertEqual((fh.nxt, fh.id, fh.frag_off, fh.m_flag), (6, 65535, 8191, 1))
+        self.assertIsInstance(fh, Packet)
+        s = bytes.fromhex("3b0401020000c910" + "00" * 16 + "0100c2040000000005020000010200" + "00")
+        self.assertEqual(len(ip6.IP6OptsHeader(s).options), 3)
+        self.assertEqual(bytes(ip6.IP6OptsHeader(s)), s)
+        s = b"\x3b\x04\x00\x00\x02\x02\x02\x02\x01\x01\x01\x01" + b"x" * 8
+        ah = ip6.IP6AHHeader(s)
         self.assertEqual(
-            actual["cases"], {c["id"]: F.expected(c, "octetrail") for c in F.fixtures()}
+            (ah.length, ah.auth_data, ah.spi, ah.seq), (24, b"x" * 8, 0x2020202, 0x1010101)
         )
-
-    def test_ethernet_alias_and_type_inference_and_raw_both_versions(self):
-        wire = bytes.fromhex(F.fixtures()[0]["wire"])
-        frame = ethernet.Ethernet(data=ip6.IP6(wire), type=0x88B5, dst=F.MAC[:6], src=F.MAC[6:12])
-        self.assertEqual(frame.type, 0x88B5)
-        self.assertEqual(bytes(frame), F.MAC + wire)
-        parsed = ethernet.Ethernet(bytes(frame))
-        self.assertIs(parsed.ip6, parsed.data)
-        self.assertIsInstance(raw.decode(wire), ip6.IP6)
-        v4 = bytes.fromhex(F.C.encode({"kind": "opaque", "p": 253, "payload": "6e6f7465"}).hex())[
-            14:
-        ]
-        self.assertIsInstance(raw.decode(v4), ip.IP)
-        self.assertEqual(bytes(raw.decode(v4)), v4)
+        self.assertEqual(bytes(ah), s)
+        esp = ip6.IP6ESPHeader(bytes(8) + b"rest")
+        self.assertEqual((esp.length, esp.data), (12, b"rest"))
+        with self.assertRaisesRegex(NeedData, "got 7, 8 needed at least"):
+            ip6.IP6RoutingHeader(bytes(7))
         with self.assertRaises(NeedData):
-            raw.decode(b"")
-        with self.assertRaises(UnpackError):
-            raw.decode(b"\x50")
-        with self.assertRaises(TypeError):
-            raw.decode(bytearray(wire))
+            ip6.IP6DstOptsHeader(b"\x3b\x00\x05")
 
-    def test_non_atomic_fragments_stay_bytes_at_any_extension_position(self):
-        for kinds in ((44,), (0, 44), (60, 44)):
-            for field in (1, 8, 9):
-                c = F.fixture("fragment", 6, b"note", kinds, fragment=field)
-                packet = ip6.IP6(bytes.fromhex(c["wire"]))
-                self.assertTrue(packet.fragmented)
-                self.assertIsInstance(packet.data, bytes)
-                self.assertFalse(hasattr(packet, "tcp"))
-                self.assertEqual(bytes(packet).hex(), c["wire"])
-        c = F.fixture("atomic", 6, b"note", (44,))
-        self.assertIsInstance(ip6.IP6(bytes.fromhex(c["wire"])).data, tcp.TCP)
-
-    def test_non_atomic_fragment_does_not_parse_headers_inside_fragment_data(self):
-        fragment = struct.pack("!BBHI", 60, 0, 1, 17)
-        body = bytes((6, 0)) + bytes(6) + bytes(20)
-        fixed = struct.pack("!IHBB16s16s", 0x60000000, len(fragment + body), 44, 0, F.SRC, F.DST)
-        packet = ip6.IP6(fixed + fragment + body)
-        self.assertEqual(len(packet.all_extension_headers), 1)
-        self.assertEqual(packet.data, body)
-        self.assertEqual(packet.p, 60)
-        packet.data = tcp.TCP()
-        with self.assertRaises(PackError):
+    def test_payload_and_dispatch(self):
+        self.assertIsInstance(ip6.IP6(case("udp")).udp, udp.UDP)
+        self.assertIsInstance(ip6.IP6(case("ipv4_in_ipv6")).ip, ip.IP)
+        self.assertIsInstance(ip6.IP6(case("ipv6_in_ipv6")).ip6, ip6.IP6)
+        self.assertEqual(ip6.IP6(case("unknown_protocol")).data, b"opaque")
+        self.assertEqual(len(ip6.IP6(case("plen_zero_reads_all")).data), 12)
+        self.assertEqual(ip6.IP6(case("trailing_bytes")).data.data, b"note")
+        self.assertEqual(ip6.IP6(case("version_four")).v, 4)
+        self.assertIsInstance(ip6.IP6(case("first_fragment")).data, udp.UDP)
+        self.assertIsInstance(ip6.IP6(case("later_fragment")).data, bytes)
+        message = "'IP6HopOptsHeader' object has no attribute 'frag_off'"
+        for error in (ip6.FragmentOffsetError, UnpackError, AttributeError):
+            with self.assertRaisesRegex(error, message):
+                ip6.IP6(case("fragment_then_options"))
+        frame = ethernet.Ethernet(MAC + case("fragment_then_options"))
+        self.assertEqual(frame.data, case("fragment_then_options"))
+        packet = ip6.IP6(case("esp"))
+        self.assertFalse(hasattr(packet, "p"))
+        with self.assertRaises(AttributeError):
             bytes(packet)
+        ip6.IP6.set_proto(253, udp.UDP)
+        try:
+            self.assertIs(ip6.IP6.get_proto(253), udp.UDP)
+        finally:
+            del ip6.IP6._protosw[253]
 
-    def test_extension_count_bytes_and_packet_bounds(self):
-        c = F.fixture("many", 253, b"", (60,) * 17)
-        with self.assertRaises(ip6.LimitError):
-            ip6.IP6(bytes.fromhex(c["wire"]))
-        packet = ip6.IP6(
-            nxt=60,
-            all_extension_headers=(ip6.ExtensionHeader(60, bytes((253, 255)) + bytes(2046)),),
-            data=b"note",
-        )
-        self.assertEqual(len(bytes(packet)), 2092)
-        packet.all_extension_headers += (ip6.ExtensionHeader(60, bytes((253, 0)) + bytes(6)),)
-        with self.assertRaises(ip6.LimitError):
-            bytes(packet)
-        with self.assertRaises(ip6.LimitError):
-            ip6.IP6(bytes(65576))
-        with self.assertRaises(ip6.LimitError):
-            bytes(ip6.IP6(nxt=253, data=bytes(65536)))
-
-    def test_incomplete_base_and_nested_fallback_and_resource_propagation(self):
-        for count in range(40):
-            with self.assertRaises(NeedData):
-                ip6.IP6(bytes(count))
-        self.assertEqual(ethernet.Ethernet(F.MAC + b"short").data, b"short")
-        for error in (ValueError("caller"), MemoryError("memory")):
-            with (
-                patch.object(ip6._native, "_ipv6_unpack", side_effect=error),
-                self.assertRaises(type(error)) as result,
-            ):
-                ethernet.Ethernet(F.MAC + bytes(40))
-            self.assertIs(result.exception, error)
-
-    def test_nested_limit_refusal_preserves_bytes_but_direct_decode_is_strict(self):
-        wire = bytes.fromhex(F.fixtures()[0]["wire"])
-        error = ip6.LimitError("configured parse bound")
-        with patch.object(ip6._native, "_ipv6_unpack", side_effect=error):
-            frame = ethernet.Ethernet(F.MAC + wire)
-            self.assertEqual(frame.data, wire)
-            self.assertFalse(hasattr(frame, "ip6"))
-            self.assertEqual(bytes(frame), F.MAC + wire)
-            for decoder in (ip6.IP6, raw.decode):
-                with self.assertRaises(ip6.LimitError) as result:
-                    decoder(wire)
-                self.assertIs(result.exception, error)
-
-    def test_unchanged_capture_checksum_refusal_does_not_prevent_roundtrip(self):
-        for protocol in (6, 17):
-            wire = F.ordinary_routed_capture(protocol)
-            with patch.object(
-                ip6._native,
-                "_ipv6_checksum",
-                side_effect=AssertionError("unsupported checksum called"),
-            ):
-                packet = ip6.IP6(wire)
-                self.assertEqual(bytes(packet), wire)
-                self.assertEqual(packet.data.sum, 0)
-                self.assertEqual(bytes(ethernet.Ethernet(F.MAC + wire)), F.MAC + wire)
-                packet.data.data = b"other note"
-                with self.assertRaises(NotImplementedError):
-                    bytes(packet)
-                self.assertEqual(packet.data.sum, 0)
-
-    def test_opaque_esp_no_next_and_caller_length_checksum(self):
-        c = F.fixture("opaque-esp", 50, b"ordinary opaque bytes")
-        packet = ip6.IP6(bytes.fromhex(c["wire"]))
-        self.assertEqual(packet.data, b"ordinary opaque bytes")
-        self.assertEqual(bytes(packet).hex(), c["wire"])
-        child = udp.UDP(sport=1, dport=2, ulen=12, sum=0x1234, data=b"note")
-        packet = ip6.IP6(nxt=17, data=child)
-        self.assertEqual(len(bytes(packet)), 52)
-        self.assertEqual((packet.plen, child.sum, child.ulen), (0, 0x1234, 12))
-        child.data = b"new note"
-        bytes(packet)
-        self.assertEqual((packet.plen, child.sum, child.ulen), (0, 0x1234, 12))
-
-    def test_chain_validation_cycles_and_active_routing_checksum_exclusion(self):
-        packet = ip6.IP6(
-            nxt=6, all_extension_headers=(ip6.ExtensionHeader(60, bytes((6, 0)) + bytes(6)),)
-        )
-        with self.assertRaises(PackError):
-            bytes(packet)
-        packet = ip6.IP6(
-            nxt=43,
-            all_extension_headers=(ip6.ExtensionHeader(43, bytes((6, 0, 0, 1)) + bytes(4)),),
-            data=tcp.TCP(),
-        )
-        with self.assertRaises(NotImplementedError):
-            bytes(packet)
-        packet.data = packet
-        with self.assertRaises(TypeError):
-            bytes(packet)
+    def test_errors_keep_the_headers_read(self):
+        with self.assertRaisesRegex(NeedData, "got 39, 40 needed at least"):
+            ip6.IP6(case("short_header"))
         packet = ip6.IP6()
-        for key, value in (("fc", 256), ("flow", 1 << 20), ("v", 16)):
-            with self.assertRaises(ValueError):
-                setattr(packet, key, value)
+        with self.assertRaisesRegex(NeedData, "got 1, 2 needed at least"):
+            packet.unpack(case("short_extension"))
+        self.assertEqual([type(e) for e in packet.all_extension_headers], [ip6.IP6FragmentHeader])
+        self.assertEqual(packet.nxt, 44)
+        with self.assertRaises(UnpackError):
+            ip6.IP6(case("options_need_data"))
+
+    def test_packing_and_checksums(self):
+        packet = ip6.IP6(src=F.SRC, dst=F.DST, nxt=17, data=udp.UDP(F.UDP))
+        wire = bytes(packet)
+        self.assertEqual(packet.p, 17)
+        self.assertNotEqual(packet.data.sum, 0)
+        self.assertEqual(wire[:6], b"\x60\0\0\0\0\0")
+        self.assertEqual(len(packet), 40 + len(F.UDP))
+        pseudo = struct.pack(">16s16sxBH", F.SRC, F.DST, 17, len(F.UDP))
+        total = sum(
+            struct.unpack(">%dH" % ((len(pseudo) + len(wire[40:])) // 2), pseudo + wire[40:])
+        )
+        while total >> 16:
+            total = (total & 0xFFFF) + (total >> 16)
+        self.assertEqual(total, 0xFFFF)
+        with self.assertRaises(PackError):
+            bytes(ip6.IP6(src="text"))
+        with self.assertRaises(ValueError):
+            ip6.IP6(flow=1 << 20)
+        packet = ip6.IP6(src=F.SRC, dst=F.DST, data=b"x")
+        packet.extension_hdrs = {
+            60: ip6.IP6DstOptsHeader(F.opts(17)),
+            0: ip6.IP6HopOptsHeader(F.opts(60)),
+        }
+        self.assertEqual(bytes(packet)[40:], F.opts(60) + F.opts(17) + b"x")
+        self.assertEqual(packet.p, 17)
+
+    def test_ah_data_is_copied_on_first_use(self):
+        packet = ip6.IP6(case("ah_chain"))
+        first = packet.all_extension_headers[0]
+        self.assertNotIn("auth_data", vars(first))
+        self.assertEqual(first.auth_data, b"xxxxxxxx")
+        self.assertEqual(first.data, case("ah_chain")[52:])
+        second = packet.all_extension_headers[1]
+        second.data = b"new"
+        self.assertEqual((second.data, second.auth_data), (b"new", b"xxxxxxxx"))
+        self.assertIn("length=20, auth_data=b'xxxxxxxx'", repr(packet.all_extension_headers[2]))
+        with self.assertRaisesRegex(AttributeError, "'IP6AHHeader' object has no attribute 'note'"):
+            first.note  # noqa: B018
+
+    def test_long_chains_parse_in_linear_time(self):
+        def chain(count):
+            body = b"".join(F.ah(51, b"") for _ in range(count)) + F.ah(59, b"")
+            return F.base(51, body, plen=0)
+
+        start = time.perf_counter()
+        small = ip6.IP6(chain(2000))
+        small_time = time.perf_counter() - start
+        start = time.perf_counter()
+        large = ip6.IP6(chain(16000))
+        large_time = time.perf_counter() - start
+        self.assertEqual(len(large.all_extension_headers), 16001)
+        self.assertLess(large_time, max(small_time, 0.001) * 40)
+        self.assertEqual(len(small.all_extension_headers), 2001)
+
+    def test_raw_ethernet_and_captures(self):
+        wire = case("udp")
+        self.assertIsInstance(raw.decode(wire), ip6.IP6)
+        captured = case("dpkt_tcp")
+        frame = ethernet.Ethernet(MAC + captured)
+        self.assertIs(frame.ip6, frame.data)
+        self.assertEqual(bytes(frame), MAC + captured)
+        capture = struct.pack("<IHHIIII", 0xA1B2C3D4, 2, 4, 0, 0, 65535, 101)
+        capture += struct.pack("<IIII", 1, 0, len(wire), len(wire)) + wire
+        rows = list(pcap.Reader(io.BytesIO(capture)))
+        self.assertEqual(rows, [(1.0, wire)])
+        self.assertIsInstance(raw.decode(rows[0][1]).data, udp.UDP)
 
     def test_optimized_probe_rejects_wrong_version(self):
         result = subprocess.run(
