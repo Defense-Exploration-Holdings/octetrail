@@ -18,6 +18,8 @@ from . import llc as llc
 from . import ospf as ospf
 from . import packet as packet
 from . import pim as pim
+from . import ppp as ppp
+from . import pppoe as pppoe
 from . import raw as raw
 from . import sctp as sctp
 from . import ssl as ssl
@@ -56,6 +58,7 @@ __all__.append("ssl")
 __all__.extend(("ipip", "ipx", "llc", "stp"))
 __all__.extend(("icmp", "icmp6"))
 __all__.extend(("igmp", "vrrp"))
+__all__.extend(("ppp", "pppoe"))
 __all__.extend(("ah", "esp"))
 __all__.extend(("crc32c", "ospf", "sctp"))
 __all__.extend(("gre", "pim"))
@@ -65,3 +68,4 @@ __all__.extend(("Packet", "hexdump", "in_cksum", "in_cksum_add", "in_cksum_done"
 
 # As in dpkt, the protocol tables are filled once every module is loaded.
 ip._mod_init()
+ppp._mod_init()
