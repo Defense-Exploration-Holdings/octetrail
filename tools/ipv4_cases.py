@@ -170,18 +170,21 @@ def cases():
     )
     result[-1]["status"] = "version_difference"
     add("opaque_options", dict(literal_state, hl=6, opts="01010101", len=28), operation="parse")
-    limits = [
-        ("version", dict(literal_state, v=6), "NotImplementedError"),
-        ("zero_length", dict(literal_state, len=0), "NotImplementedError"),
-        ("short_total_length", dict(literal_state, len=19), "ValueError"),
-        ("short_payload", literal_state, "NeedData"),
+    # dpkt accepts any version and slices a zero, short or cut-off length as found.
+    lenient = [
+        ("version", dict(literal_state, v=6)),
+        ("zero_length", dict(literal_state, len=0)),
+        ("short_total_length", dict(literal_state, len=19)),
+        ("short_payload", literal_state),
     ]
-    for name, values, error in limits:
+    for name, values in lenient:
         values = dict(values, sum=0)
         values["sum"] = checksum(header(values) + bytes.fromhex(values["opts"]))
-        add(name, values, operation="parse", port_error=error)
+        add(name, values, operation="parse")
         case = result[-1]
-        case["status"] = "unsupported"
+        if name != "version":
+            # dpkt 1.9.6 always rewrites the length when packing; 1.9.8 keeps it.
+            case["status"] = "version_difference"
         if name == "short_total_length":
             case["state"]["data"] = ""
         if name == "short_payload":

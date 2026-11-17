@@ -80,41 +80,48 @@ fn all_short_header_lengths_are_truncation() {
 }
 
 #[test]
-fn options_version_and_too_small_ihl_are_distinct() {
-    for (first, error) in [
-        (0x65, Error::UnsupportedVersion(6)),
-        (0x44, Error::InvalidHeaderLength),
-    ] {
+fn any_version_is_accepted_and_only_small_ihl_is_rejected() {
+    for first in [0x05, 0x65, 0xf5] {
         let mut raw = literal();
         raw[0] = first;
-        assert_eq!(Packet::parse(&raw).unwrap_err(), error);
+        let p = Packet::parse(&raw).unwrap();
+        assert_eq!((p.header.version_ihl, p.data), (first, b"rail".as_slice()));
+    }
+    for ihl in 0..5 {
+        let mut raw = literal();
+        raw[0] = 0x40 | ihl;
+        assert_eq!(Packet::parse(&raw).unwrap_err(), Error::InvalidHeaderLength);
     }
 }
 
 #[test]
-fn declared_payload_is_complete_and_trailing_bytes_are_ignored() {
-    assert_eq!(
-        Packet::parse(&literal()[..23]).unwrap_err(),
-        Error::Truncated {
-            available: 23,
-            required: 24
-        }
-    );
-    let mut raw = literal();
-    raw.extend_from_slice(b"padding");
-    assert_eq!(Packet::parse(&raw).unwrap().data, b"rail");
-    for length in [0u16, 19] {
-        let mut bytes = literal();
+fn payload_is_sliced_like_dpkt() {
+    let raw = literal();
+    // A payload cut off by the buffer is kept as found.
+    assert_eq!(Packet::parse(&raw[..23]).unwrap().data, b"rai");
+    assert_eq!(Packet::parse(&raw[..20]).unwrap().data, b"");
+    // Bytes beyond the declared length are dropped.
+    let padded = [raw.as_slice(), b"padding"].concat();
+    assert_eq!(Packet::parse(&padded).unwrap().data, b"rail");
+    // A zero length keeps the rest of the buffer (segmentation offload).
+    let mut offload = padded.clone();
+    offload[2..4].fill(0);
+    assert_eq!(Packet::parse(&offload).unwrap().data, b"railpadding");
+    // A length inside the header leaves an empty payload.
+    for length in [1u16, 19, 20] {
+        let mut bytes = raw.clone();
         bytes[2..4].copy_from_slice(&length.to_be_bytes());
-        assert_eq!(
-            Packet::parse(&bytes).unwrap_err(),
-            if length == 0 {
-                Error::OffloadLengthUnsupported
-            } else {
-                Error::InvalidTotalLength(length)
-            }
-        );
+        let p = Packet::parse(&bytes).unwrap();
+        assert_eq!((p.opts, p.data), (b"".as_slice(), b"".as_slice()));
     }
+}
+
+#[test]
+fn short_options_are_kept_as_found() {
+    let mut raw = literal();
+    raw[0] = 0x4f;
+    let p = Packet::parse(&raw).unwrap();
+    assert_eq!((p.opts, p.data), (b"rail".as_slice(), b"".as_slice()));
 }
 
 #[test]
@@ -157,7 +164,11 @@ fn maximum_datagram_bound_is_enforced_before_output_allocation() {
     assert_eq!(p.header.total_length, 65535);
     let too_large = vec![b'x'; 65516];
     p.data = &too_large;
+    p.header.checksum = 0;
     assert_eq!(p.to_bytes().unwrap_err(), Error::TooLarge);
+    // An explicit checksum packs as assigned, so no length is computed.
+    p.header.checksum = 1;
+    assert_eq!(p.to_bytes().unwrap().len(), 65536);
 }
 
 #[test]
@@ -177,12 +188,11 @@ fn options_are_borrowed_checked_and_included_in_checksum() {
     assert_eq!(parsed.opts, &[1, 1, 1, 1]);
     assert_eq!(parsed.opts.as_ptr(), raw[20..].as_ptr());
     assert_eq!(parsed.data, b"rail");
-    assert!(matches!(
-        Packet::parse(&raw[..23]),
-        Err(Error::Truncated { required: 24, .. })
-    ));
+    assert_eq!(Packet::parse(&raw[..23]).unwrap().opts, &[1, 1, 1]);
+    // Options are packed as assigned, whatever the IHL says.
     p.opts = &[];
-    assert_eq!(p.to_bytes().unwrap_err(), Error::InvalidOptionsLength);
+    p.header.checksum = 0;
+    assert_eq!(p.to_bytes().unwrap().len(), 24);
 }
 
 #[test]

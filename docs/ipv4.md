@@ -22,7 +22,9 @@ constructor fields and extra positional arguments are unsupported.
 
 The covered mutable fields are `v`, `hl`, `tos`, `len`, `id`, `ttl`, `p`, `sum`,
 `src`, `dst`, `data`, and the named `rf`, `df`, `mf`, `offset` bit fields.
-`opts` is bytes of at most 40 bytes, with its length matching `hl`. Defaults are version 4, header length 5, TTL 64,
+`opts` is opaque bytes. Set `hl` to five plus the option length divided by four;
+neither is inferred from the other, and packing writes both as assigned, as dpkt
+does. Defaults are version 4, header length 5, TTL 64,
 zero addresses, empty payload and zero checksum. Constructor length defaults to
 20 plus options and payload length unless explicitly supplied. `len(packet)` reports the
 actual header-plus-payload length, independently of the stored `packet.len`.
@@ -44,27 +46,28 @@ For example, assigning `offset = 24` stores wire offset 24 here and in 1.9.8,
 but wire offset 3 in 1.9.6. Mutating the offset retains the other flag bits;
 reset `sum` when the header checksum needs refreshing.
 
-Parsing retains the declared IPv4 datagram and ignores trailing enclosing-frame
-bytes. It never reassembles fragments. Rust borrows option/payload slices;
-the Python facade returns TCP/UDP objects where supported, otherwise owned bytes. Serialized packets are
-limited to 65535 bytes. Temporary native output, Python output and retained input
+Parsing slices the datagram as dpkt 1.9.8 does. Bytes beyond a nonzero total
+length are dropped, so Ethernet padding is not payload. A zero total length (as
+seen with segmentation offload) keeps the rest of the buffer. Options and payload
+cut off by the buffer are kept as found, and a total length inside the header
+gives an empty payload. Any version nibble is accepted. It never reassembles
+fragments. Rust borrows option/payload slices;
+the Python facade returns TCP/UDP objects where supported, otherwise owned bytes. With
+`sum == 0`, serialized packets are limited to 65535 bytes, because the length field
+is computed; with an explicit checksum the fields are packed as assigned. Temporary native output, Python output and retained input
 are separate memory costs; this is not a process-memory or wall-clock limit.
 
 ## Errors and exclusions
 
 Incomplete fixed headers raise `NeedData`. An IHL below five raises `UnpackError`.
-Non-IPv4 versions and offload-style zero total lengths raise
-`NotImplementedError`. On parsing, declared lengths below the complete header length raise `ValueError`, and an
-incomplete declared payload raises `NeedData`. The latter two are stricter than
-the references' permissive slicing. Unsupported field widths/types raise
-`PackError` during packing; full error messages and failed-object mutation
-timing are not claimed compatible.
+Nothing else is rejected on parsing. Packing writes the header, options and
+payload as assigned, whatever `hl` says. Unsupported field widths/types raise
+`PackError` during packing, as does a zero-checksum datagram over 65535 bytes;
+full error messages and failed-object mutation timing are not claimed compatible.
 
-Within Ethernet, that specific inconsistent-length parse failure retains the
-original payload as bytes. Direct IPv4 behavior remains `ValueError`; generic
-value/type errors and resource failures are not swallowed by nested decoding.
-Snaplen-truncated datagrams likewise remain raw Ethernet payloads, without an
-`ip` alias, rather than the references' possible partial nested objects.
+Within Ethernet, an IPv4 payload that raises `UnpackError` or `NeedData` stays
+bytes. Generic value/type errors and resource failures are not swallowed by nested
+decoding.
 
 Parsing and serialization cover bytes payloads, ordinary unsigned numeric fields
 and byte-string addresses. Generic Packet methods, arbitrary numeric or buffer
