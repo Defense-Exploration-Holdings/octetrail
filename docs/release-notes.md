@@ -1,5 +1,12 @@
 # Release notes
 
+## 0.3.1
+
+First PyPI upload of the 0.3.0 changes. The code is the same as 0.3.0, which
+was published only as a GitHub Release. The release workflow now waits for a
+newly created release draft to appear in the release listing before it uploads
+files, instead of failing when the listing lags.
+
 ## 0.3.0
 
 One stable-ABI wheel (abi3, CPython 3.10 and later) per platform replaces the

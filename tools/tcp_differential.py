@@ -84,7 +84,7 @@ def main():
             baselines[0]["results"][case["id"]] == baselines[1]["results"][case["id"]],
             f"TCP oracle observations disagree for {case['id']}",
         )
-    actuals = [probe(python, "octetrail", "0.3.0", payload) for python in args.python]
+    actuals = [probe(python, "octetrail", "0.3.1", payload) for python in args.python]
     for report in actuals:
         validate(report, payload)
         for case in matching:
