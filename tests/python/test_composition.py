@@ -79,7 +79,6 @@ class CompositionTests(unittest.TestCase):
             ValueError("caller error"),
             TypeError("caller type"),
             MemoryError("allocation"),
-            ethernet.LimitError("limit"),
         ):
             with self.subTest(error=type(error).__name__):
                 with (
@@ -94,10 +93,15 @@ class CompositionTests(unittest.TestCase):
         # dpkt packs IPv4 and TCP options as assigned, whatever hl or off says.
         self.assertEqual(len(bytes(ip.IP(hl=15, opts=b"\x01" * 44))), 64)
         self.assertEqual(len(bytes(tcp.TCP(off=15, opts=b"\x01" * 44))), 64)
-        for packet in (ethernet.Ethernet(), ip.IP(), tcp.TCP()):
+        for packet in (ip.IP(), tcp.TCP()):
             packet.data = packet
             with self.assertRaises(TypeError):
                 bytes(packet)
+        # Ethernet packs its payload the way dpkt's Packet does, without a cycle check.
+        packet = ethernet.Ethernet()
+        packet.data = packet
+        with self.assertRaises(RecursionError):
+            bytes(packet)
 
     def test_udp_length_is_caller_owned_and_zero_checksum_maps_to_ones(self):
         case = next(c for c in F.fixtures() if c["id"] == "udp_zero_checksum_maps_to_ones")

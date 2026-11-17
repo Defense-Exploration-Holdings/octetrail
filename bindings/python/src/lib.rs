@@ -1,6 +1,7 @@
 //! A synchronous Python binary-stream adapter around the independent Rust core.
 
 mod dns;
+mod ethernet;
 mod http;
 mod ipv4;
 mod ipv6;
@@ -67,74 +68,6 @@ fn python_error(error: Error) -> PyErr {
         error @ Error::UnsupportedBlock(_) => PyNotImplementedError::new_err(error.to_string()),
         error => PyValueError::new_err(error.to_string()),
     }
-}
-
-fn ethernet_error(error: octetrail::ethernet::Error) -> PyErr {
-    use octetrail::ethernet::Error;
-    match error {
-        error @ Error::TruncatedHeader { .. } => TruncatedError::new_err(error.to_string()),
-        error @ Error::UnsupportedFraming { .. } => {
-            PyNotImplementedError::new_err(error.to_string())
-        }
-        error @ Error::FrameLimit { .. } => PacketLimitError::new_err(error.to_string()),
-        Error::Allocation => PyMemoryError::new_err(error.to_string()),
-        Error::LengthOverflow => PyValueError::new_err(error.to_string()),
-    }
-}
-
-type EthernetFields<'py> = (
-    Bound<'py, PyBytes>,
-    Bound<'py, PyBytes>,
-    u16,
-    Bound<'py, PyBytes>,
-);
-
-#[pyfunction]
-fn _ethernet_unpack<'py>(
-    py: Python<'py>,
-    bytes: &Bound<'py, PyBytes>,
-) -> PyResult<EthernetFields<'py>> {
-    let frame =
-        octetrail::ethernet::Frame::parse(bytes.as_bytes(), octetrail::ethernet::Limits::default())
-            .map_err(ethernet_error)?;
-    Ok((
-        PyBytes::new(py, &frame.header.dst),
-        PyBytes::new(py, &frame.header.src),
-        frame.header.ethertype,
-        PyBytes::new(py, frame.data),
-    ))
-}
-
-#[pyfunction]
-fn _ethernet_header<'py>(
-    py: Python<'py>,
-    dst: &Bound<'py, PyBytes>,
-    src: &Bound<'py, PyBytes>,
-    ethertype: u16,
-) -> PyResult<Bound<'py, PyBytes>> {
-    let bytes = octetrail::ethernet::Header::new(dst.as_bytes(), src.as_bytes(), ethertype)
-        .and_then(|header| header.to_bytes())
-        .map_err(ethernet_error)?;
-    Ok(PyBytes::new(py, &bytes))
-}
-
-#[pyfunction]
-fn _ethernet_pack<'py>(
-    py: Python<'py>,
-    dst: &Bound<'py, PyBytes>,
-    src: &Bound<'py, PyBytes>,
-    ethertype: u16,
-    payload: &Bound<'py, PyBytes>,
-) -> PyResult<Bound<'py, PyBytes>> {
-    let header = octetrail::ethernet::Header::new(dst.as_bytes(), src.as_bytes(), ethertype)
-        .map_err(ethernet_error)?;
-    let bytes = octetrail::ethernet::Frame {
-        header,
-        data: payload.as_bytes(),
-    }
-    .to_bytes(octetrail::ethernet::Limits::default())
-    .map_err(ethernet_error)?;
-    Ok(PyBytes::new(py, &bytes))
 }
 
 #[pyclass(name = "_Reader", module = "octetrail._native")]
@@ -512,14 +445,12 @@ impl RawNgReader {
 
 #[pymodule(gil_used = true)]
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    ethernet::register(module)?;
     ipv4::register(module)?;
     ipv6::register(module)?;
     dns::register(module)?;
     http::register(module)?;
     tls::register(module)?;
-    module.add_function(wrap_pyfunction!(_ethernet_unpack, module)?)?;
-    module.add_function(wrap_pyfunction!(_ethernet_header, module)?)?;
-    module.add_function(wrap_pyfunction!(_ethernet_pack, module)?)?;
     module.add_class::<RawReader>()?;
     module.add_class::<RawNgReader>()?;
     module.add_class::<RawWriter>()?;

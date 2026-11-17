@@ -63,7 +63,7 @@ rounding and traps. Defaults retain the measured dpkt behavior above. The
   Reader does not autodetect pcapng; use `octetrail.pcapng.Reader` explicitly,
   or the measured [UniversalReader factory](universal-reader.md).
   Reader performs no protocol dispatch or checksum validation. The separate
-  Ethernet, IPv4, TCP and UDP modules provide bounded fixed-header parsing.
+  Ethernet, IPv4, TCP and UDP modules parse the frames and packets.
   Modified pcap, filter execution, header classes and complete DLT/magic
   constant inventories are absent. The [capture provider](capture-compatibility.md)
   lists the sixteen measured exports across both capture modules.

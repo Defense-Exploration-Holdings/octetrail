@@ -1,5 +1,5 @@
 #![no_main]
-//! Ethernet II, IPv4/IPv6 and TCP/UDP decoding, starting at every layer.
+//! Ethernet, IPv4/IPv6 and TCP/UDP decoding, starting at every layer.
 use libfuzzer_sys::fuzz_target;
 use octetrail::{ethernet, ipv4, ipv6, tcp, udp};
 
@@ -33,9 +33,21 @@ fn network(data: &[u8]) {
 }
 
 fuzz_target!(|data: &[u8]| {
-    if let Ok(frame) = ethernet::Frame::parse(data, ethernet::Limits::default()) {
-        network(frame.data);
+    if let Ok(frame) = ethernet::Frame::parse(data) {
+        let payload = &data[frame.header + ethernet::HEADER_LEN..];
+        match frame.kind {
+            ethernet::Kind::Typed => {
+                if let Ok(stack) = ethernet::Stack::parse(payload, frame.ethertype) {
+                    network(&payload[stack.payload..]);
+                }
+            }
+            ethernet::Kind::Llc { llc, .. } => {
+                let _ = ethernet::Llc::parse(&data[llc.0..llc.1]);
+            }
+            _ => {}
+        }
     }
+    let _ = ethernet::crc32(data);
     network(data);
     tcp_round_trip(data);
     let _ = udp::Datagram::parse(data, udp::Limits::default());
