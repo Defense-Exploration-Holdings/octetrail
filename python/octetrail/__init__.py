@@ -25,23 +25,29 @@ from . import ntp as ntp
 from . import ospf as ospf
 from . import packet as packet
 from . import pim as pim
+from . import pmap as pmap
 from . import ppp as ppp
 from . import pppoe as pppoe
 from . import radius as radius
 from . import raw as raw
+from . import rfb as rfb
 from . import rip as rip
 from . import rtp as rtp
+from . import rx as rx
 from . import sctp as sctp
 from . import sll as sll
 from . import sll2 as sll2
+from . import smb as smb
 from . import ssl as ssl
 from . import stp as stp
 from . import stun as stun
 from . import tcp as tcp
 from . import tftp as tftp
+from . import tns as tns
 from . import tpkt as tpkt
 from . import udp as udp
 from . import vrrp as vrrp
+from . import yahoo as yahoo
 from .errors import Error, NeedData, PackError, UnpackError
 from .packet import Packet as Packet
 from .packet import hexdump as hexdump
@@ -73,6 +79,7 @@ __all__.append("ssl")
 __all__.extend(("ipip", "ipx", "llc", "stp"))
 __all__.extend(("icmp", "icmp6"))
 __all__.extend(("igmp", "vrrp"))
+__all__.extend(("pmap", "rfb", "rx", "smb", "tns", "yahoo"))
 __all__.append("netbios")
 __all__.extend(("radius", "rtp", "stun", "tpkt"))
 __all__.extend(("hsrp", "ntp", "rip", "tftp"))

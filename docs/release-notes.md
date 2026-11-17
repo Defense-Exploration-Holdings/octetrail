@@ -2,28 +2,10 @@
 
 ## Unreleased
 
-NetBIOS now parses and packs the way dpkt 1.9.8 does:
-
-- New module: `octetrail.netbios`, with `NS` (a `DNS` subclass), `Session`,
-  `Datagram`, `encode_name`, `decode_name`, `node_to_service_name` and dpkt's
-  constants.
-- A NODE STATUS record with empty resource data raises
-  `netbios.NodeStatusError`, an `UnpackError` and `IndexError` subclass, where
-  dpkt raises `IndexError`.
-
-DNS now follows dpkt 1.9.8's classes:
-
-- API: `DNS`, `DNS.Q` and `DNS.RR` are `Packet` subclasses with dpkt's
-  `repr()` and its `pack_q`, `unpack_q`, `pack_rr`, `unpack_rr`, `pack_rdata`
-  and `unpack_rdata` steps, so subclasses can replace them. A new question or
-  record has `name` set to `b""`, as in dpkt.
-- Packing: out-of-range fields, long labels and long text raise `struct.error`
-  instead of `PackError`, and text that is not bytes, a name that is not a
-  string and a parsed MX `preference` tuple fail as they do in dpkt.
-- Parsing: a name or string that is not UTF-8 raises `dns.TextDecodeError`, an
-  `UnpackError` and `UnicodeDecodeError` subclass, where dpkt raises
-  `UnicodeDecodeError`. A name cut off by the buffer raises `NeedData` with
-  no message, as in dpkt. The parse budget is unchanged.
+Portmap, Rx, TNS, Yahoo Messenger, SMB and RFB now parse and pack the way dpkt
+1.9.8 does: the new `octetrail.pmap`, `octetrail.rx`, `octetrail.tns`,
+`octetrail.yahoo`, `octetrail.smb` and `octetrail.rfb` modules have dpkt's
+classes and constants.
 
 OSPF and SCTP now parse and pack the way dpkt 1.9.8 does:
 
@@ -47,6 +29,20 @@ PPP and PPPoE now parse and pack the way dpkt 1.9.8 does:
 - Ethernet decodes type 0x880B as PPP and 0x8864 as PPPoE.
 - A PPP frame whose inner IPv6 packet raises `ip6.FragmentOffsetError` keeps
   that packet as bytes, where dpkt raises `AttributeError`.
+
+DNS now follows dpkt 1.9.8's classes:
+
+- API: `DNS`, `DNS.Q` and `DNS.RR` are `Packet` subclasses with dpkt's
+  `repr()` and its `pack_q`, `unpack_q`, `pack_rr`, `unpack_rr`, `pack_rdata`
+  and `unpack_rdata` steps, so subclasses can replace them. A new question or
+  record has `name` set to `b""`, as in dpkt.
+- Packing: out-of-range fields, long labels and long text raise `struct.error`
+  instead of `PackError`, and text that is not bytes, a name that is not a
+  string and a parsed MX `preference` tuple fail as they do in dpkt.
+- Parsing: a name or string that is not UTF-8 raises `dns.TextDecodeError`, an
+  `UnpackError` and `UnicodeDecodeError` subclass, where dpkt raises
+  `UnicodeDecodeError`. A name cut off by the buffer raises `NeedData` with
+  no message, as in dpkt. The parse budget is unchanged.
 
 RADIUS, RTP, STUN and TPKT now parse and pack the way dpkt 1.9.8 does:
 
@@ -80,6 +76,15 @@ NTP, RIP, TFTP and HSRP now parse and pack the way dpkt 1.9.8 does:
 - A TFTP request without a NUL after the file name raises
   `tftp.RequestError`, an `UnpackError` and `IndexError` subclass, where dpkt
   raises `IndexError`.
+
+NetBIOS now parses and packs the way dpkt 1.9.8 does:
+
+- New module: `octetrail.netbios`, with `NS` (a `DNS` subclass), `Session`,
+  `Datagram`, `encode_name`, `decode_name`, `node_to_service_name` and dpkt's
+  constants.
+- A NODE STATUS record with empty resource data raises
+  `netbios.NodeStatusError`, an `UnpackError` and `IndexError` subclass, where
+  dpkt raises `IndexError`.
 
 ## 0.5.1
 
