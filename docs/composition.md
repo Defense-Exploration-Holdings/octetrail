@@ -6,8 +6,13 @@ aliases. Unknown Ethernet/IP protocols remain opaque bytes. Known children that
 raise `UnpackError`/`NeedData` or `NotImplementedError` also remain bytes; direct
 parsing still raises those errors. Resource, allocation and unexpected errors
 are not swallowed. Payloads below TCP/UDP remain bytes with no application
-dispatch. ARP, IPv6 and application protocols are not decoded. This API performs
-no network operation.
+dispatch. ARP remains unsupported. The separate [DNS API](dns.md) must be called
+explicitly and does not change transport payloads. This API performs no network
+operation.
+
+The separate [IPv6/raw-IP contract](ipv6.md) covers EtherType `0x86dd`, bounded
+opaque extension framing and its stricter non-atomic fragment policy. The IPv4
+rules below remain unchanged.
 
 A declared IPv4 length below its complete header length raises `ValueError` when
 parsing IP directly. Inside Ethernet it leaves the original payload as bytes.
@@ -97,5 +102,4 @@ Probes run under isolated optimized Python and explicitly verify distribution
 version, module ownership and native extension origin. Missing implementations
 or provenance fail rather than skip. This covers the declared offline slice,
 not full dpkt compatibility, a replacement distribution, application protocols,
-unchanged CAPE integration or performance. The full CAPE network-processing path
-requires additional application behavior and is not executed by these tests.
+downstream applications or performance.

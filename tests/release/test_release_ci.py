@@ -11,6 +11,7 @@ import json
 import os
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 import zipfile
@@ -18,6 +19,7 @@ from pathlib import Path
 from unittest import mock
 
 import yaml
+from release_fixture import NAMES, make_release, write_manifest
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("release_ci", ROOT / "tools/release_ci.py")
@@ -213,6 +215,8 @@ class HistoryTests(unittest.TestCase):
 
 
 class ArtifactTests(unittest.TestCase):
+    LEGAL = b"benign synthetic legal fixture\n"
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
@@ -221,48 +225,87 @@ class ArtifactTests(unittest.TestCase):
         self.dist.mkdir()
         (self.root / "licenses").mkdir()
         for name in ("LICENSE", "NOTICE", "licenses/dpkt.txt"):
-            (self.root / name).write_bytes(b"benign synthetic legal fixture\n")
+            (self.root / name).write_bytes(self.LEGAL)
+        (self.root / "Cargo.lock").write_bytes(b"lock fixture\n")
+        (self.root / "pyproject.toml").write_bytes(b"project fixture\n")
         self.names = R.expected_names("0.1.0")
-        for cp in self.names:
-            self.wheel(cp)
+        for key in R.PLATFORMS:
+            self.wheel(key)
+        self.sdist()
 
-    def wheel(self, cp, *, tag=None, legal=b"benign synthetic legal fixture\n"):
+    def wheel(self, key, *, tags=None, legal=LEGAL):
         prefix = "octetrail-0.1.0.dist-info/"
-        with zipfile.ZipFile(self.dist / self.names[cp], "w") as archive:
+        tags = tags or [R.ABI + "-" + t for t in R.PLATFORMS[key].split(".")]
+        with zipfile.ZipFile(self.dist / self.names[key], "w") as archive:
             archive.writestr(prefix + "METADATA", "Name: octetrail\nVersion: 0.1.0\n")
-            archive.writestr(
-                prefix + "WHEEL", f"Tag: {tag or cp + '-' + cp + '-manylinux_2_34_x86_64'}\n"
-            )
+            archive.writestr(prefix + "WHEEL", "".join(f"Tag: {t}\n" for t in tags))
             for name in ("LICENSE", "NOTICE", "licenses/dpkt.txt"):
                 archive.writestr(prefix + "licenses/" + name, legal)
 
-    def test_exact_two_wheels_legal_bytes_tags_and_hashes(self):
-        hashes = R.validate_wheels(self.dist, self.root, "0.1.0")
+    def sdist(self, *, extra=None, lock=None):
+        top = "octetrail-0.1.0/"
+        files = {
+            "PKG-INFO": b"Name: octetrail\nVersion: 0.1.0\n",
+            "Cargo.lock": lock or b"lock fixture\n",
+            "pyproject.toml": b"project fixture\n",
+            "LICENSE": self.LEGAL,
+            "NOTICE": self.LEGAL,
+            "licenses/dpkt.txt": self.LEGAL,
+            **(extra or {}),
+        }
+        with tarfile.open(self.dist / self.names["sdist"], "w:gz") as archive:
+            for name, data in files.items():
+                info = tarfile.TarInfo(top + name)
+                info.size = len(data)
+                archive.addfile(info, io.BytesIO(data))
+
+    def test_every_platform_wheel_and_sdist_with_hashes(self):
+        hashes = R.validate_dist(self.dist, self.root, "0.1.0")
+        self.assertEqual(len(hashes), 9)
         self.assertEqual(
             hashes,
             {
-                cp: hashlib.sha256((self.dist / name).read_bytes()).hexdigest()
-                for cp, name in self.names.items()
+                name: hashlib.sha256((self.dist / name).read_bytes()).hexdigest()
+                for name in self.names.values()
             },
         )
+        text = R.manifest_text(hashes)
+        self.assertEqual(len(text.splitlines()), 9)
+        self.assertTrue(all(len(line.split("  ")[0]) == 64 for line in text.splitlines()))
 
-    def test_extra_sdist_and_missing_wheel_are_rejected(self):
-        extra = self.dist / "octetrail-0.1.0.tar.gz"
+    def test_names_cover_each_platform_with_the_stable_abi(self):
+        names = R.expected_names("1.2.3")
+        self.assertEqual(names["sdist"], "octetrail-1.2.3.tar.gz")
+        self.assertEqual(names["windows-arm64"], "octetrail-1.2.3-cp310-abi3-win_arm64.whl")
+        self.assertEqual(len(set(names.values())), 9)
+        with self.assertRaisesRegex(ValueError, "version_format"):
+            R.expected_names("1.2.3rc1")
+
+    def test_extra_and_missing_files_are_rejected(self):
+        extra = self.dist / "octetrail-0.1.0-cp312-cp312-manylinux_2_34_x86_64.whl"
         extra.write_bytes(b"not a release artifact")
-        with self.assertRaisesRegex(ValueError, "wheel_inventory"):
-            R.validate_wheels(self.dist, self.root, "0.1.0")
+        with self.assertRaisesRegex(ValueError, "dist_inventory"):
+            R.validate_dist(self.dist, self.root, "0.1.0")
         extra.unlink()
-        (self.dist / self.names["cp313"]).unlink()
-        with self.assertRaisesRegex(ValueError, "wheel_inventory"):
-            R.validate_wheels(self.dist, self.root, "0.1.0")
+        (self.dist / self.names["macos-arm64"]).unlink()
+        with self.assertRaisesRegex(ValueError, "dist_inventory"):
+            R.validate_dist(self.dist, self.root, "0.1.0")
 
-    def test_wrong_abi_platform_tag_and_changed_license_are_rejected(self):
-        self.wheel("cp312", tag="cp312-cp312-manylinux_2_17_x86_64")
+    def test_wrong_platform_tag_and_changed_license_are_rejected(self):
+        self.wheel("linux-x86_64", tags=["cp310-abi3-manylinux_2_34_x86_64"])
         with self.assertRaisesRegex(ValueError, "wheel_tag"):
-            R.validate_wheels(self.dist, self.root, "0.1.0")
-        self.wheel("cp312", legal=b"changed fixture")
+            R.validate_dist(self.dist, self.root, "0.1.0")
+        self.wheel("linux-x86_64", legal=b"changed fixture")
         with self.assertRaisesRegex(ValueError, "wheel_legal_bytes"):
-            R.validate_wheels(self.dist, self.root, "0.1.0")
+            R.validate_dist(self.dist, self.root, "0.1.0")
+
+    def test_sdist_private_paths_and_changed_inputs_are_rejected(self):
+        self.sdist(extra={".github/workflows/release.yml": b"x"})
+        with self.assertRaisesRegex(ValueError, "sdist_private_path"):
+            R.validate_dist(self.dist, self.root, "0.1.0")
+        self.sdist(lock=b"different lock\n")
+        with self.assertRaisesRegex(ValueError, "sdist_bytes"):
+            R.validate_dist(self.dist, self.root, "0.1.0")
 
 
 class WorkflowTests(unittest.TestCase):
@@ -275,9 +318,18 @@ class WorkflowTests(unittest.TestCase):
     def test_triggers_permissions_environment_and_pinned_actions(self):
         workflow = self.workflow
         self.assertEqual(set(workflow["on"]), {"pull_request", "push", "workflow_dispatch"})
-        self.assertEqual(workflow["on"]["push"], {"branches": ["main"], "tags": ["v*"]})
+        self.assertEqual(workflow["on"]["push"], {"branches": ["main", "ci/**"], "tags": ["v*"]})
         self.assertEqual(workflow["permissions"], {"contents": "read"})
-        self.assertEqual(set(workflow["jobs"]), {"build", "release", "pypi"})
+        self.assertEqual(
+            set(workflow["jobs"]), {"gate", "check", "wheels", "sdist", "build", "release", "pypi"}
+        )
+        self.assertEqual(workflow["jobs"]["build"]["needs"], ["gate", "check", "wheels", "sdist"])
+        for name in ("gate", "check", "wheels", "sdist", "build"):
+            self.assertEqual(workflow["jobs"][name]["permissions"], {"contents": "read"})
+        matrix = {
+            row["name"] for row in workflow["jobs"]["wheels"]["strategy"]["matrix"]["include"]
+        }
+        self.assertEqual(matrix, set(R.PLATFORMS))
         build, publish = workflow["jobs"]["build"], workflow["jobs"]["release"]
         self.assertEqual(build["permissions"], {"contents": "read"})
         self.assertEqual(publish["permissions"], {"contents": "write"})
@@ -303,8 +355,20 @@ class WorkflowTests(unittest.TestCase):
             self.assertNotIn("tools/", step.get("run", ""))
             self.assertNotIn("pip install", step.get("run", ""))
         self.assertEqual(
-            publish["steps"][0]["with"]["artifact-ids"], "${{ needs.build.outputs.artifact-id }}"
+            publish["steps"][0]["with"],
+            {"artifact-ids": "${{ needs.build.outputs.artifact-id }}", "path": "release"},
         )
+
+    def test_inline_platform_lists_match_the_release_tooling(self):
+        expected = repr(tuple(R.PLATFORMS.values()))
+        scripts = [
+            self.workflow["jobs"]["release"]["steps"][1]["run"],
+            self.workflow["jobs"]["release"]["steps"][2]["run"],
+            self.workflow["jobs"]["pypi"]["steps"][2]["run"],
+        ]
+        for script in scripts:
+            self.assertIn("platforms = " + expected.replace("'", '"'), script)
+            self.assertIn(R.ABI, script)
 
     def test_actual_job_guard_rejects_private_forks_prs_manual_and_unprotected(self):
         context = {
@@ -363,18 +427,17 @@ class WorkflowTests(unittest.TestCase):
         script = step["run"].split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "dist").mkdir()
-            env = {**os.environ, "VERSION": "0.1.0"}
-            for cp, name in R.expected_names("0.1.0").items():
-                payload = b"ordinary local artifact fixture " + cp.encode()
-                (root / "dist" / name).write_bytes(payload)
-                env[cp.upper() + "_SHA256"] = hashlib.sha256(payload).hexdigest()
+            env = {**os.environ, "VERSION": "0.1.0", "MANIFEST_SHA256": make_release(root)}
             command = [sys.executable, "-I", "-c", script]
             subprocess.run(command, cwd=root, env=env, check=True, capture_output=True)
-            env["CP312_SHA256"] = "0" * 64
+            env["MANIFEST_SHA256"] = "0" * 64
             result = subprocess.run(command, cwd=root, env=env, check=False, capture_output=True)
             self.assertNotEqual(result.returncode, 0)
-            self.assertIn(b"wheel_hash_mismatch", result.stderr)
+            self.assertIn(b"manifest_hash_mismatch", result.stderr)
+            env["MANIFEST_SHA256"] = write_manifest(root)
+            (root / "release/dist" / NAMES[0]).write_bytes(b"changed")
+            result = subprocess.run(command, cwd=root, env=env, check=False, capture_output=True)
+            self.assertIn(b"dist_hash_mismatch", result.stderr)
 
 
 class VersionedWheelCheckTests(unittest.TestCase):

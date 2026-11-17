@@ -37,6 +37,9 @@ def write_portable_wheel(source, destination):
                     continue
                 data = archive.read(info.filename)
                 if ".dist-info/sboms/" in info.filename and info.filename.endswith(".json"):
+                    # file URLs use forward slashes on every OS (file:///D:/a/... on Windows).
+                    posix = ROOT.as_posix().lstrip("/")
+                    data = data.replace(b"file:///" + posix.encode(), b"file://.")
                     data = data.replace(str(ROOT).encode(), b".")
                     json.loads(data)  # Reject a malformed transformed SBOM.
                 output.writestr(info, data)
@@ -51,7 +54,10 @@ def write_portable_wheel(source, destination):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--interpreter", action="append", required=True)
+    parser.add_argument("--interpreter", action="append", default=[])
+    parser.add_argument("--target", help="Rust target triple, for example aarch64-apple-darwin")
+    parser.add_argument("--compatibility", help="platform tag policy, for example manylinux_2_17")
+    parser.add_argument("--zig", action="store_true", help="link with zig (Linux cross builds)")
     parser.add_argument("--out", type=Path, default=ROOT / "dist")
     parser.add_argument("--offline", action="store_true", help="require a populated Cargo cache")
     args = parser.parse_args()
@@ -82,6 +88,12 @@ def main():
             command.append("--offline")
         for interpreter in args.interpreter:
             command.extend(["--interpreter", interpreter])
+        if args.target:
+            command.extend(["--target", args.target])
+        if args.compatibility:
+            command.extend(["--compatibility", args.compatibility])
+        if args.zig:
+            command.append("--zig")
         subprocess.run(command, cwd=ROOT, env=environment, check=True)
         for wheel in sorted(Path(directory).glob("*.whl")):
             destination = args.out / wheel.name

@@ -1,6 +1,5 @@
 """Execute the workflow's publisher only against a local fake gh, never a service."""
 
-import hashlib
 import json
 import os
 import shutil
@@ -12,13 +11,13 @@ import unittest
 from pathlib import Path
 
 import yaml
+from release_fixture import ASSETS, NAMES, make_release, write_manifest
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = yaml.load((ROOT / ".github/workflows/release.yml").read_text(), Loader=yaml.BaseLoader)
 SCRIPT = WORKFLOW["jobs"]["release"]["steps"][2]["run"].split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
 REPO = "Defense-Exploration-Holdings/octetrail"
 SHA = "1" * 40
-NAMES = [f"octetrail-0.1.0-{cp}-{cp}-manylinux_2_34_x86_64.whl" for cp in ("cp312", "cp313")]
 
 # This executable has no network implementation. Unknown CLI operations fail.
 FAKE = textwrap.dedent("""\
@@ -70,7 +69,7 @@ if endpoint==base+'/releases/7/assets?per_page=100' and method=='GET':
         assets=[dict(a,state='starter') for a in assets]
     finish([assets])
 if endpoint==base+'/releases/7' and method=='GET':
-    if mode=='before-publish-error' and len(s['release']['assets'])==2: fail()
+    if mode=='before-publish-error' and len(s['release']['assets'])==int(os.environ['MODEL_ASSETS']): fail()
     if mode=='draft-changed': s['release']['draft']=False
     finish(s['release'])
 if endpoint==base+'/releases/7' and method=='PATCH':
@@ -97,7 +96,6 @@ class GitHubAssetTests(unittest.TestCase):
     ):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "dist").mkdir()
             (root / "bin").mkdir()
             executable = root / "bin/gh"
             executable.write_text("#!" + sys.executable + "\n" + FAKE)
@@ -120,14 +118,12 @@ class GitHubAssetTests(unittest.TestCase):
                 REPOSITORY_ID="1457516742",
             )
             self.assertEqual(shutil.which("gh", path=env["PATH"]), str(executable))
-            for cp, name in zip(("CP312", "CP313"), NAMES, strict=True):
-                data = b"ordinary immutable artifact fixture " + cp.encode()
-                (root / "dist" / name).write_bytes(data)
-                env[cp + "_SHA256"] = hashlib.sha256(data).hexdigest()
+            env["MANIFEST_SHA256"] = make_release(root)
+            env["MODEL_ASSETS"] = str(len(ASSETS))
             if changed:
-                (root / "dist" / NAMES[0]).write_bytes(b"changed fixture")
+                (root / "release/dist" / NAMES[0]).write_bytes(b"changed fixture")
             if extra:
-                (root / "dist/ordinary.tar.gz").write_bytes(b"excluded source distribution")
+                (root / "release/dist/ordinary.tar.gz").write_bytes(b"unexpected extra file")
             env.update(changes or {})
             state = {"calls": [], "created": False, "published": False}
             (root / "state.json").write_text(json.dumps(state))
@@ -151,23 +147,22 @@ class GitHubAssetTests(unittest.TestCase):
                 (root / "state.json").write_text(json.dumps(state))
                 env.update(resume_changes or {})
                 if resume_changed:
-                    data = b"different complete artifact fixture"
-                    (root / "dist" / NAMES[0]).write_bytes(data)
-                    env["CP312_SHA256"] = hashlib.sha256(data).hexdigest()
+                    (root / "release/dist" / NAMES[0]).write_bytes(b"different artifact")
+                    env["MANIFEST_SHA256"] = write_manifest(root)
                 env["MODEL_MODE"] = mode
             result = subprocess.run(
                 command, cwd=root, env=env, text=True, capture_output=True, check=False, timeout=30
             )
             return result, json.loads((root / "state.json").read_text())
 
-    def test_new_release_publishes_only_after_exact_two_assets(self):
+    def test_new_release_publishes_only_after_every_exact_asset(self):
         for mode in ("normal", "annotated"):
             result, state = self.model(mode)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertTrue(state["published"])
-            self.assertEqual({a["name"] for a in state["release"]["assets"]}, set(NAMES))
+            self.assertEqual({a["name"] for a in state["release"]["assets"]}, set(ASSETS))
             writes = [(method, endpoint) for method, endpoint in state["calls"] if method != "GET"]
-            self.assertEqual([m for m, _ in writes], ["POST", "POST", "POST", "PATCH"])
+            self.assertEqual([m for m, _ in writes], ["POST"] * (1 + len(ASSETS)) + ["PATCH"])
             self.assertTrue(writes[-1][1].endswith("/releases/7"))
 
     def test_existing_draft_published_or_unreadable_listing_never_writes(self):
@@ -226,8 +221,8 @@ class GitHubAssetTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(state["published"])
         writes = [(m, p) for m, p in state["calls"][state["resume_call_offset"] :] if m != "GET"]
-        self.assertEqual([m for m, _ in writes], ["POST", "PATCH"])
-        self.assertEqual(len({a["name"] for a in state["release"]["assets"]}), 2)
+        self.assertEqual([m for m, _ in writes], ["POST"] * (len(ASSETS) - 1) + ["PATCH"])
+        self.assertEqual({a["name"] for a in state["release"]["assets"]}, set(ASSETS))
         result, state = self.model(resume=True, resume_mode="before-publish-error", optimized=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(

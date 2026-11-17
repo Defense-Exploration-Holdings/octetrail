@@ -37,7 +37,7 @@ class UDPTests(unittest.TestCase):
 
     def test_retained_length_does_not_trim_or_extend_payload(self):
         for length in (0, 7, 8, 12, 65535):
-            raw = LITERAL[:4] + length.to_bytes(2) + LITERAL[6:]
+            raw = LITERAL[:4] + length.to_bytes(2, "big") + LITERAL[6:]
             packet = udp.UDP(raw)
             self.assertEqual((packet.ulen, packet.data, len(packet)), (length, b"rail", 12))
             self.assertEqual(bytes(packet), raw)
@@ -46,7 +46,7 @@ class UDPTests(unittest.TestCase):
         for checksum in (0, 0x8000, 65535):
             packet = udp.UDP(sport=12345, dport=54321, ulen=12, sum=checksum, data=b"rail")
             packet.data = b"ordinary changed bytes"
-            self.assertEqual(bytes(packet), LITERAL[:6] + checksum.to_bytes(2) + packet.data)
+            self.assertEqual(bytes(packet), LITERAL[:6] + checksum.to_bytes(2, "big") + packet.data)
             self.assertEqual((packet.ulen, packet.sum), (12, checksum))
             self.assertEqual(bytes(packet), bytes(packet))
 

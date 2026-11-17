@@ -1,159 +1,101 @@
-# Wheel builds and GitHub Releases
+# Wheel builds and releases
 
-The [workflow](../.github/workflows/release.yml) builds and tests Linux x86-64
-CPython 3.12 and 3.13 wheels on updates to `main`, pull requests and manual
-dispatch. These build paths have read-only repository permissions. Manual runs,
-including ones selecting a tag, cannot upload release assets. No source
-distribution is built or uploaded. PyPI publishing has a separate opt-in job,
-described below; ordinary builds do not request OIDC tokens.
+The [release workflow](../.github/workflows/release.yml) runs on pull requests,
+pushes to `main`, `v*` tags and manual dispatch. Every run builds and tests the
+same files a release would publish. Only a protected version tag in this
+repository can publish them.
 
-Rust 1.85.1, locked Cargo dependencies and hash-pinned Python build/validation
-tools are used. The build checks formatting, Clippy, native tests, Python tests,
-release gates, wheel records, metadata, licenses, strict Twine checks and
-auditwheel policy. Both exact wheels are installed into fresh matching
-interpreter environments and tested against independent benign capture fixtures
-and the two hash-pinned dpkt references. The artifact contains only these tested
-wheels and is retained for seven days.
+## What is built
 
-The wheel tag is `manylinux_2_34_x86_64`, with glibc 2.34 as its declared minimum.
-Symbol-policy inspection is not execution on every compatible Linux distribution.
-The runner is Ubuntu 24.04. No musl, ARM, Windows, macOS, PyPy or other Python
-version support is established by this workflow.
+| File | Platform | Tested on |
+| --- | --- | --- |
+| `octetrail-X.Y.Z-cp310-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl` | Linux x86-64, glibc 2.17+ | Ubuntu 24.04, CPython 3.10 and 3.14 |
+| `octetrail-X.Y.Z-cp310-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl` | Linux arm64, glibc 2.17+ | Ubuntu 24.04 arm64, CPython 3.10 and 3.14 |
+| `octetrail-X.Y.Z-cp310-abi3-musllinux_1_2_x86_64.whl` | Linux x86-64, musl 1.2+ | Alpine (python:3.10-alpine, python:3.14-alpine) |
+| `octetrail-X.Y.Z-cp310-abi3-musllinux_1_2_aarch64.whl` | Linux arm64, musl 1.2+ | Alpine arm64, same images |
+| `octetrail-X.Y.Z-cp310-abi3-macosx_10_12_x86_64.whl` | macOS 10.12+ on Intel | macOS 15 Intel, CPython 3.10 and 3.14 |
+| `octetrail-X.Y.Z-cp310-abi3-macosx_11_0_arm64.whl` | macOS 11+ on Apple silicon | macOS 15, CPython 3.10 and 3.14 |
+| `octetrail-X.Y.Z-cp310-abi3-win_amd64.whl` | Windows x64 | Windows Server 2025, CPython 3.10 and 3.14 |
+| `octetrail-X.Y.Z-cp310-abi3-win_arm64.whl` | Windows arm64 | Windows 11 arm64, CPython 3.11 and 3.14 |
+| `octetrail-X.Y.Z.tar.gz` | source distribution | built into a wheel from the unpacked archive and tested on CPython 3.14 |
 
-## Verify the first build after installation
+The wheels use the CPython stable ABI (abi3) from 3.10, so one wheel per
+platform works on CPython 3.10 and every later version. Free-threaded CPython
+builds and PyPy are not covered by abi3 wheels; they can build from the source
+distribution, which needs Rust 1.85 or later.
 
-Installing the workflow on the default `main` branch triggers a build on that
-push. A build can also be requested explicitly from `main`:
+Linux wheels are linked with zig against the manylinux2014 and musllinux_1_2
+baselines. `auditwheel` checks the glibc wheels' symbol policy. Every wheel is
+also checked for its file records, package namespace, metadata, license files
+and the absence of build-machine paths.
 
-```sh
-gh workflow run release.yml --repo Defense-Exploration-Holdings/octetrail --ref main
-gh run list --repo Defense-Exploration-Holdings/octetrail --workflow release.yml
-```
+## Jobs
 
-Open that run and confirm the build succeeds, contains exactly the two wheel
-files, and skips the release job. This works before release activation or tag
-creation and does not require PyPI configuration. Inspect/download the build
-artifact rather than creating a release to test the installation.
+1. `gate` decides, without credentials, whether this run may publish.
+2. `check` runs `cargo fmt`, Clippy, the Rust tests, Ruff and the release
+   tooling tests.
+3. `wheels` builds one wheel per platform with `tools/build_wheels.py` and runs
+   the Python test suite against the installed wheel on that platform.
+4. `sdist` builds the source distribution, builds a wheel from it and tests it.
+5. `build` collects all nine files, checks the exact file list and every file's
+   metadata, runs `twine check --strict`, compares the Linux x86-64 wheel with
+   the two pinned dpkt references on CPython 3.10 and 3.14, and writes
+   `SHA256SUMS`. Its artifact holds exactly those files.
+6. `release` and `pypi` publish that artifact (see below).
 
-## Deliberate version-tag releases
+All jobs except `release` and `pypi` have read-only repository permissions.
 
-GitHub Release upload is off unless the repository variable
-`WHEEL_RELEASES_ENABLED` is exactly `true`. Administrators must independently
-configure and review the following controls before enabling it:
+## Cutting a release
 
-1. Protect `main`, review workflow changes and prohibit force pushes/deletion.
-2. Protect tags matching `v*`: restrict creation to release maintainers and
-   prohibit updates/deletion. Eligible tags must report `ref_protected=true`.
-3. Create the `github-release` environment with required release reviewers,
-   prevention of self-review and selected-tag deployment restrictions for `v*`.
-   Do not allow branch deployments; disable administrator bypass where available.
-4. Allow the pinned actions and the dedicated release job's `contents: write`
-   permission under applicable Actions policy. Keep default token permissions
-   read-only. No deploy key, personal token or stored release credential is used.
-5. Review the successful public build and exact proposed workflow, then
-   separately authorize setting `WHEEL_RELEASES_ENABLED=true`.
+Set the same version in `pyproject.toml`, both Cargo manifests,
+`python/octetrail/__init__.py` and `Cargo.lock`, add release notes, merge, and
+push a `vX.Y.Z` tag on that commit of `main`. Only stable `X.Y.Z` versions are
+accepted.
 
-A release build requires the first attempt of a new, unforced, protected stable
-`vX.Y.Z` tag push in the canonical public repository. The tag version must match
-`pyproject.toml`, both Cargo manifests and the Python package version. The tag
-and checkout must identify the same commit on fetched `main` ancestry. Invalid
-public release-tag pushes fail the build. Forks, private repositories, PRs,
-branch pushes and manual runs cannot upload through this workflow. A complete
-build rerun fails the initial tag gate. A failed release job alone has the narrow
-same-run recovery path below.
+A run can publish only when all of these hold: it is the first attempt of an
+initial, unforced push of a protected `v*` tag in
+`Defense-Exploration-Holdings/octetrail`; the tag matches every version
+declaration; the tag and checkout are the same commit; that commit is on `main`;
+and every build job succeeded. Pull requests, branches, forks, manual runs and
+complete reruns cannot publish.
 
-Choose an unused version, update all version declarations and the lockfile
-together, and deliberately tag the reviewed current `main` commit. Approve the
-protected environment only after reviewing the successful build and its files.
-The `0.2.0` metadata's Alpha classifier is not a prerelease version spelling;
-prerelease and local-version tag spellings are excluded.
+## GitHub Release
 
-Only the dedicated release job requests `contents: write`. It downloads the
-successful build's immutable artifact ID in the same run and verifies the exact
-two filenames and SHA-256 outputs. There is no checkout, package installation or
-project execution in this job. Inline standard-library checks invoke the runner's
-installed `gh` with the built-in `GITHUB_TOKEN` only.
+The `release` job runs when the repository variable `WHEEL_RELEASES_ENABLED` is
+`true`, in the `github-release` environment, with `contents: write` and no
+checkout or project code. It downloads the `build` artifact by its ID from the
+same run, checks `SHA256SUMS` against the digest reported by `build` and every
+file against `SHA256SUMS`, and then:
 
-Before any write, it checks existing releases, including visible drafts, and
-rechecks the remote tag commit and `main` ancestry. It creates a new draft,
-uploads exactly the two verified wheels, checks the remote asset names, sizes
-and SHA-256 digests, then publishes that new release. It never deletes, replaces
-or clobbers existing release assets or adopts a foreign release. GitHub's generated source-code archive
-links are not uploaded Python source distributions.
+- refuses to continue if a published release or someone else's draft exists for
+  the tag, or if the tag no longer points at the built commit on `main`;
+- creates a draft, uploads the nine files and `SHA256SUMS`, checks every
+  uploaded asset's name, size and digest, and publishes the draft.
 
-Published releases and foreign drafts stop the job. Read/API failures or
-mismatches stop before publication. A failure after draft creation can leave an
-unpublished draft or partial upload. Inspect the outcome before retrying only the
-failed release job, while the original artifact is retained. The successful build
-must not be rerun. Recovery requires a GitHub Actions bot-owned draft with an
-exact receipt binding the repository, source, version, run ID, immutable artifact
-ID, wheel names, sizes and digests. Existing uploaded assets must match exactly;
-only absent assets are uploaded. The complete inventory is verified before
-publication. Changed artifacts, a different run, edited receipt, unrelated source,
-extra assets or mismatched bytes are rejected.
+It never deletes, replaces or overwrites an asset. If the job fails after the
+draft exists, rerun only the failed `release` job while the artifact is still
+retained (seven days). It resumes only a draft created by the same run and
+artifact, uploads only missing assets, and checks the complete set before
+publishing. Anything else stops the job for manual review.
 
-An unfinished upload record (`starter`), mismatched asset, expired artifact or
-uncertain publication result needs separate manual investigation and any
-separately authorized cleanup. The workflow never deletes or overwrites assets,
-retags a version, or edits another release to recover.
+## PyPI
 
-This repository content does not configure admin controls, activate uploads,
-create tags, perform a release or establish a live service test. The documented
-local tests use a fake CLI with no networking. See GitHub's
-[token permissions](https://docs.github.com/en/actions/tutorials/authenticate-with-github_token),
-[release CLI](https://cli.github.com/manual/gh_release_create) and
-[environment protections](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments).
+The `pypi` job runs when `PYPI_PUBLISHING_ENABLED` is `true`, in the `pypi`
+environment, with only `id-token: write` (Trusted Publishing, no stored token).
+It applies the same file checks and then uploads the nine files with the pinned
+`pypa/gh-action-pypi-publish` action, with attestations and metadata checks on
+and existing files treated as errors.
 
-## Optional PyPI Trusted Publishing
+The Trusted Publisher on PyPI uses owner `Defense-Exploration-Holdings`,
+repository `octetrail`, workflow `release.yml` and environment `pypi`.
 
-PyPI has its own `pypi` job and opt-in, independent of GitHub Release uploads.
-It is off when `PYPI_PUBLISHING_ENABLED` is absent from the effective `vars`
-context or does not compare equal to `true`. GitHub string comparisons ignore
-case, so `TRUE` also opts in. The context can inherit organization variables;
-absence of a repository-level setting alone does not prove the effective value
-is empty. Before activation, review the effective configuration and use a
-repository-level opt-in. An environment-only value is unavailable when this
-job-level gate is evaluated. No live configuration values are inspected or
-created by this preparation.
-`WHEEL_RELEASES_ENABLED` continues to control only the GitHub Release job.
+## Repository settings
 
-The PyPI job requires the canonical public repository name and numeric identity,
-default branch `main`, an initial unforced protected version-tag push, successful
-validated build outputs, a nonempty artifact ID, and the first workflow attempt.
-The existing build gate verifies the stable tag against all version declarations,
-the checked-out source commit and fetched main history. PRs, branch pushes,
-manual runs, other repositories and complete reruns cannot publish. The job does
-not depend on completion of the separate GitHub Release job.
+These are configured on GitHub, not in this repository:
 
-Only this job has `id-token: write`. Its other token permissions are unset, and
-GitHub treats unspecified permissions as `none` when job permissions are listed.
-The build remains read-only. The GitHub Release job keeps its separate
-`contents: write` permission and has no OIDC permission.
-
-Before downloading, a stdlib check validates the version/tag, numeric artifact
-ID and both expected SHA-256 digests. The download is pinned to that immutable
-artifact ID in the same workflow run; it cannot select another run or repository.
-The exact two-file wheel inventory and hashes are checked again before the
-pinned official PyPA action. Missing, extra, changed or nonregular files stop the
-job. There is no checkout, source execution or project installation in the PyPI
-job, no stored PyPI token, and no sdist. Attestations and metadata verification
-are enabled; existing PyPI filenames are errors rather than silently skipped.
-
-Before any separately approved activation, administrators must configure the
-`pypi` GitHub environment with required release review, prevention of self-review
-and selected `v*` tag deployments, without branch deployments or administrator
-bypass where available. Main and version-tag protections described above must
-also be in place. Repository content does not configure or verify these settings.
-
-The PyPI Trusted Publisher fields are owner `Defense-Exploration-Holdings`,
-repository `octetrail`, workflow filename `release.yml`, and environment `pypi`.
-The filename is not `release.yaml`. Use the existing project settings or a
-pending publisher with project name `octetrail` as appropriate. Registration,
-public installation, setting the opt-in and creating an unused version tag are
-separate reviewed actions. Do not test this preparation with a real publication.
-Investigate any uncertain upload outcome before taking further action; no PyPI
-recovery or overwrite path is provided.
-
-See the [PyPI Trusted Publishing guide](https://docs.pypi.org/trusted-publishers/using-a-publisher/),
-[GitHub permission syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#permissions)
-and [expression comparison rules](https://docs.github.com/en/actions/reference/workflows-and-actions/expressions#operators).
+1. Protect `main` against force pushes and deletion.
+2. Protect `v*` tags: restrict who can create them and block updates and
+   deletion, so eligible tags report `ref_protected`.
+3. Give the `github-release` and `pypi` environments required reviewers and
+   limit them to `v*` tags.
+4. Keep the default `GITHUB_TOKEN` permission read-only.

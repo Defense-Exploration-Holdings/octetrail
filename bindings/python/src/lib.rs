@@ -1,6 +1,10 @@
 //! A synchronous Python binary-stream adapter around the independent Rust core.
 
+mod dns;
+mod http;
 mod ipv4;
+mod ipv6;
+mod tls;
 
 use octetrail::{ByteOrder, Error, Header, Limits, Reader, Resolution};
 use pyo3::exceptions::{
@@ -509,6 +513,10 @@ impl RawNgReader {
 #[pymodule(gil_used = true)]
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     ipv4::register(module)?;
+    ipv6::register(module)?;
+    dns::register(module)?;
+    http::register(module)?;
+    tls::register(module)?;
     module.add_function(wrap_pyfunction!(_ethernet_unpack, module)?)?;
     module.add_function(wrap_pyfunction!(_ethernet_header, module)?)?;
     module.add_function(wrap_pyfunction!(_ethernet_pack, module)?)?;

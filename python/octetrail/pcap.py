@@ -46,6 +46,15 @@ _OFFSETS = {
 }
 
 
+def _decimal_timestamp(ticks, base, exponent, offset=0):
+    """Convert a native integer clock exactly, without using Decimal context."""
+    coefficient = offset * base**exponent + ticks
+    if base == 2:
+        coefficient *= 5**exponent
+    digits = tuple(int(digit) for digit in str(abs(coefficient)))
+    return Decimal((int(coefficient < 0), digits, -exponent))
+
+
 class Reader:
     """Read a binary stream without taking ownership of the caller's file.
 
@@ -54,7 +63,11 @@ class Reader:
     The open() helper owns its file and should be used as a context manager.
     """
 
-    def __init__(self, fileobj, *, max_packet_bytes=DEFAULT_MAX_PACKET_BYTES):
+    def __init__(
+        self, fileobj, *, max_packet_bytes=DEFAULT_MAX_PACKET_BYTES, decimal_timestamps=False
+    ):
+        if type(decimal_timestamps) is not bool:
+            raise TypeError("decimal_timestamps must be bool")
         limit = operator.index(max_packet_bytes)
         if not 0 <= limit <= 0xFFFFFFFF:
             raise ValueError("max_packet_bytes must be between 0 and 4294967295")
@@ -67,6 +80,8 @@ class Reader:
         self.dloff = _OFFSETS.get(self._linktype, 0)
         self.filter = ""
         self._divisor = Decimal("1E9") if nano else 1e6
+        self._decimal_timestamps = decimal_timestamps
+        self._precision_exponent = 9 if nano else 6
         self._fileobj = fileobj
         self._owns_file = False
         self._iterator = iter(self)
@@ -94,7 +109,12 @@ class Reader:
             if packet is None:
                 return
             seconds, fraction, data = packet
-            yield seconds + fraction / self._divisor, data
+            timestamp = (
+                _decimal_timestamp(fraction, 10, self._precision_exponent, seconds)
+                if self._decimal_timestamps
+                else seconds + fraction / self._divisor
+            )
+            yield timestamp, data
 
     def __next__(self):
         self._check_open()
@@ -149,11 +169,13 @@ class Reader:
         self.close()
 
 
-def open(path, *, max_packet_bytes=DEFAULT_MAX_PACKET_BYTES):
+def open(path, *, max_packet_bytes=DEFAULT_MAX_PACKET_BYTES, decimal_timestamps=False):
     """Open a local capture and return a reader that owns that file."""
     with ExitStack() as cleanup:
         stream = cleanup.enter_context(builtins.open(path, "rb"))
-        reader = Reader(stream, max_packet_bytes=max_packet_bytes)
+        reader = Reader(
+            stream, max_packet_bytes=max_packet_bytes, decimal_timestamps=decimal_timestamps
+        )
         reader._owns_file = True
         cleanup.pop_all()
         return reader
@@ -167,15 +189,15 @@ class UniversalReader:
     This compatibility factory uses the readers' existing default limits.
     """
 
-    def __new__(cls, fileobj):
+    def __new__(cls, fileobj, *, decimal_timestamps=False):
         try:
-            return Reader(fileobj)
+            return Reader(fileobj, decimal_timestamps=decimal_timestamps)
         except ValueError as classic_error:
             fileobj.seek(0)
             from . import pcapng
 
             try:
-                return pcapng.Reader(fileobj)
+                return pcapng.Reader(fileobj, decimal_timestamps=decimal_timestamps)
             except ValueError as pcapng_error:
                 # Preserve upstream's implicit context without adding a cause.
                 raise ValueError(  # noqa: B904

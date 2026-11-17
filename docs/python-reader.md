@@ -44,20 +44,27 @@ Callback exceptions propagate after their packet has been consumed. `loop()`
 returns None. `readpkts()` collects all remaining records, so callers choosing it
 must budget total output memory. The incremental consumer tests use iteration.
 
-Microsecond timestamps are Python floats computed as `seconds + ticks / 1e6`.
+By default, microsecond timestamps are Python floats computed as `seconds + ticks / 1e6`.
 Nanosecond timestamps use `seconds + ticks / Decimal("1E9")`. Decimal operations
 use the active caller context, including rounding and traps, as the measured
 references do. Returned packet data are independent owned bytes. No Rust buffer
 view is exposed. The original wire length remains available in the Rust API,
 not in the two-item Python iteration result.
 
+Pass `decimal_timestamps=True` to `Reader` or `open` for exact `Decimal` values
+at either capture resolution. This OctetRail extension constructs values directly
+from integer fields and ignores the active Decimal context, including precision,
+rounding and traps. Defaults retain the measured dpkt behavior above. The
+[Decimal timestamp guide](decimal-timestamps.md) covers PCAPNG and format selection.
+
 ## Strict behavior and unsupported paths
 
 - Ordinary pcap 2.4 is supported in both byte orders and both resolutions.
   Reader does not autodetect pcapng; use `octetrail.pcapng.Reader` explicitly,
   or the measured [UniversalReader factory](universal-reader.md).
-  Modified pcap, packet objects, protocol decoders, checksums,
-  filter execution, header classes and complete DLT/magic
+  Reader performs no protocol dispatch or checksum validation. The separate
+  Ethernet, IPv4, TCP and UDP modules provide bounded fixed-header parsing.
+  Modified pcap, filter execution, header classes and complete DLT/magic
   constant inventories are absent. The [capture provider](capture-compatibility.md)
   lists the sixteen measured exports across both capture modules.
 - Only the exception hierarchy `Error`, `UnpackError`, `NeedData` is provided.
@@ -91,42 +98,40 @@ The tested combination is Rust 1.85.1, PyO3 0.30.1 and maturin 1.16.0. The
 [PyO3 build guide](https://pyo3.rs/v0.30.1/building-and-distribution.html) and
 [maturin project layout](https://www.maturin.rs/project_layout.html) describe the
 extension and mixed-package layout. Exact registry dependencies and checksums
-are in Cargo.lock. The build tool and optional Python linter are hash-pinned for
-Linux x86_64. Neither is bundled in the wheel.
+are in Cargo.lock. The build tool and optional Python linter are hash-pinned.
+Neither is bundled in the wheel.
 
 ```sh
 python3 -m venv .venv-build
-.venv-build/bin/python -m pip install --require-hashes --only-binary=:all: -r tools/build-linux.txt
+.venv-build/bin/python -m pip install --require-hashes --only-binary=:all: -r tools/build-ci.txt
 .venv-build/bin/python -m pip install --require-hashes --only-binary=:all: -r tools/lint-linux.txt
 cargo fetch --locked
-.venv-build/bin/python tools/build_wheels.py --offline --interpreter python3.12 --interpreter python3.13
+.venv-build/bin/python tools/build_wheels.py
 python3 tools/check_wheel.py dist/*.whl
 ```
 
-Pass interpreter paths that actually exist. Each gets its own CPython wheel;
-there is no abi3 promise. `--offline` requires the Cargo cache to be populated.
-The wrapper never installs or publishes. It remaps compiled source paths, makes
+The extension uses the CPython stable ABI from 3.10, so one wheel serves CPython
+3.10 and later on the build platform. For a Linux wheel with the manylinux2014
+or musllinux baseline, also install `tools/build-zig.txt` and pass, for example,
+`--target x86_64-unknown-linux-gnu --compatibility manylinux_2_17 --zig`. The
+wrapper never installs or publishes. It remaps compiled source paths, makes
 local component paths relative in maturin's SBOM, and regenerates wheel RECORD
 hashes. Dependency identities, checksums and license metadata are preserved.
 Use this wrapper for reviewable artifacts: a direct backend build can retain
-absolute machine paths in generated metadata. Bit-for-bit reproducibility and
-source-distribution installation have not been established.
+absolute machine paths in generated metadata.
 
-Build outputs are ignored under `dist/` and can be regenerated from source. Only Linux x86_64 with glibc 2.41 was exercised, using CPython 3.12.14 and
-3.13.5. Maturin selected `manylinux_2_34_x86_64` after its wheel audit; that tag
-is not an execution test on every compatible distribution. Windows, macOS, ARM,
-musl, PyPy and other Python versions have not been tested. Metadata limits Python
-versions to 3.12 and 3.13.
+Build outputs are ignored under `dist/` and can be regenerated from source. The
+platforms built and tested for each release are listed in the
+[release guide](releasing.md).
 
 ## Install and test in a fresh environment
 
-Use the wheel matching the chosen interpreter. Do not install over another
-project's environment. For example, with CPython 3.12:
+Do not install over another project's environment. For example, on Linux x86-64:
 
 ```sh
 OCTETRAIL_TEST_ENV=$(mktemp -d)
-python3.12 -m venv "$OCTETRAIL_TEST_ENV"
-"$OCTETRAIL_TEST_ENV/bin/python" -m pip install --no-index --no-deps dist/octetrail-0.2.0-cp312-cp312-manylinux_2_34_x86_64.whl
+python3 -m venv "$OCTETRAIL_TEST_ENV"
+"$OCTETRAIL_TEST_ENV/bin/python" -m pip install --no-index --no-deps dist/octetrail-*-cp310-abi3-*.whl
 "$OCTETRAIL_TEST_ENV/bin/python" -I tests/python/test_reader.py
 python3 tools/wheel_differential.py --python "$OCTETRAIL_TEST_ENV/bin/python" --oracle-198 "$PWD/.venv-oracle-198/bin/python" --oracle-196 "$PWD/.venv-oracle-196/bin/python"
 ```

@@ -1,0 +1,4 @@
+# Hash-pinned zig toolchain for Linux wheel builds (manylinux2014 and musllinux_1_2 linking).
+ziglang==0.15.1 \
+    --hash=sha256:4e45994a0e608d9b16ecad255698f5557a2e24de0bd7ba9efb156ab3f3683d9a \
+    --hash=sha256:6c32697f9e165b7b6c5950ab0a1cd2e2bc3e72f4ff2d59bc5121b2b71955a77a

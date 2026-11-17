@@ -18,8 +18,8 @@ Rust `ipv4::Packet` and `tcp::Segment` struct literals now require the borrowed
 This remains an Alpha release for bounded offline processing. Snaplen-truncated
 IPv4 payloads can remain raw Ethernet bytes instead of partial nested objects.
 Strict option/length handling and other measured differences remain explicit.
-There is no IPv6, ARP, application protocol decoding, reassembly, live capture,
-unchanged CAPE integration or full dpkt compatibility claim.
+There is no IPv6, ARP, application protocol decoding, reassembly, live capture
+or full dpkt compatibility claim.
 
 See the [composition contract](composition.md) and
 [compatibility scope](compatibility.md) before adopting the new behavior.

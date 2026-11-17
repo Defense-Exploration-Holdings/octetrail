@@ -49,7 +49,10 @@ class Reader(pcap.Reader):
         max_block_bytes=32 * 1024 * 1024,
         max_interfaces=1024,
         max_blocks_per_read=4096,
+        decimal_timestamps=False,
     ):
+        if type(decimal_timestamps) is not bool:
+            raise TypeError("decimal_timestamps must be bool")
         self.name = getattr(fileobj, "name", f"<{fileobj.__class__.__name__}>")
         limits = [
             _limit("max_packet_bytes", max_packet_bytes),
@@ -65,6 +68,7 @@ class Reader(pcap.Reader):
         # dpkt.pcapng has its own offset inventory; it omits Linux SLL2 (276).
         self.dloff = pcap._OFFSETS.get(self._linktype, 0) if self._linktype != 276 else 0
         self.filter = ""
+        self._decimal_timestamps = decimal_timestamps
         self._fileobj = fileobj
         self._owns_file = False
         self._iterator = iter(self)
@@ -78,7 +82,12 @@ class Reader(pcap.Reader):
             if packet is None:
                 return
             ticks, base, exponent, offset, data = packet
-            yield offset + ticks / float(base**exponent), data
+            timestamp = (
+                pcap._decimal_timestamp(ticks, base, exponent, offset)
+                if self._decimal_timestamps
+                else offset + ticks / float(base**exponent)
+            )
+            yield timestamp, data
 
 
 def open(path, **limits):

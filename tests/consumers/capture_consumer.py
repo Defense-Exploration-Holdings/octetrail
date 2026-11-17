@@ -2,7 +2,7 @@
 
 It intentionally imports dpkt by its normal capture names. The harness chooses
 an isolated provider before loading this file; no provider-specific code belongs
-here. This is not the CAPE test or the upstream dpkt test suite.
+here. This is not the upstream dpkt test suite.
 """
 
 import hashlib

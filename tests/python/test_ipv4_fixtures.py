@@ -185,10 +185,10 @@ class IPv4FixtureTests(unittest.TestCase):
             self.assertEqual(old["snapshots"][index]["after"]["flags"], old_flags)
             self.assertEqual(new["snapshots"][index]["after"]["flags"], new_flags)
             self.assertEqual(
-                bytes.fromhex(old["snapshots"][index]["hex"])[6:8], old_flags.to_bytes(2)
+                bytes.fromhex(old["snapshots"][index]["hex"])[6:8], old_flags.to_bytes(2, "big")
             )
             self.assertEqual(
-                bytes.fromhex(new["snapshots"][index]["hex"])[6:8], new_flags.to_bytes(2)
+                bytes.fromhex(new["snapshots"][index]["hex"])[6:8], new_flags.to_bytes(2, "big")
             )
 
 
