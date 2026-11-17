@@ -3,6 +3,7 @@
 from . import arp as arp
 from . import capture, ethernet, ip, pcap, pcapng
 from . import dns as dns
+from . import gre as gre
 from . import http as http
 from . import icmp as icmp
 from . import icmp6 as icmp6
@@ -12,6 +13,7 @@ from . import ipip as ipip
 from . import ipx as ipx
 from . import llc as llc
 from . import packet as packet
+from . import pim as pim
 from . import raw as raw
 from . import ssl as ssl
 from . import stp as stp
@@ -49,6 +51,7 @@ __all__.append("ssl")
 __all__.extend(("ipip", "ipx", "llc", "stp"))
 __all__.extend(("icmp", "icmp6"))
 __all__.extend(("igmp", "vrrp"))
+__all__.extend(("gre", "pim"))
 __all__.append("arp")
 
 __all__.extend(("Packet", "hexdump", "in_cksum", "in_cksum_add", "in_cksum_done", "packet"))

@@ -12,6 +12,7 @@ use std::iter::FusedIterator;
 
 pub mod dns;
 pub mod ethernet;
+pub mod gre;
 pub mod http;
 pub mod ipv4;
 pub mod ipv6;

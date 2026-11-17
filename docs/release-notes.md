@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+GRE and PIM now parse and pack the way dpkt 1.9.8 does:
+
+- New modules: `octetrail.gre` with `GRE` and `GRE.SRE`, with dpkt's `GRE_*`
+  flags, and `octetrail.pim` with `PIM`. A zero PIM checksum is computed when
+  packing.
+- GRE payloads are decoded through the Ethernet type table.
+- IPv4 and IPv6 decode protocol 47 as GRE and 103 as PIM.
+
 ARP now parses and packs the way dpkt 1.9.8 does: the new `octetrail.arp`
 module has `ARP` and dpkt's constants, and Ethernet decodes type 0x0806 as ARP.
 

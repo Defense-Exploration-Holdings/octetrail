@@ -58,8 +58,8 @@ header 44 after an extension header that is not a fragment header, dpkt raises
 dpkt, `IP6` shares it, and it is filled from the `IP_PROTO_*` names: each one
 maps to the class of the same name in the OctetRail module of that name when it
 exists. Today that is `IP` (0 and 4, through `octetrail.ipip`), `ICMP`,
-`IGMP`, `TCP`, `UDP`, `IP6`, `ICMP6`, `VRRP` and, as in dpkt, the Spanning
-Tree `STP` class for 118. GRE, ESP, AH, OSPF, PIM and SCTP stay bytes until
+`IGMP`, `TCP`, `UDP`, `GRE`, `IP6`, `ICMP6`, `PIM`, `VRRP` and, as in dpkt,
+the Spanning Tree `STP` class for 118. ESP, AH, OSPF and SCTP stay bytes until
 those modules exist. `get_ip_proto_name(p)` returns the name of a protocol number, or
 `None`.
 

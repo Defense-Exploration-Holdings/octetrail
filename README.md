@@ -38,6 +38,8 @@ The [Ethernet module](docs/ethernet.md) parses and packs Ethernet II, 802.3 LLC,
 Novell, 802.1Q, MPLS and ISL frames the way dpkt 1.9.8 does, with LLC, STP and IPX.
 The [ICMP and ICMPv6 modules](docs/icmp.md) parse and pack those messages the way
 dpkt 1.9.8 does, and IPv6 decodes them.
+The [GRE and PIM modules](docs/gre-pim.md) parse and pack those packets the way
+dpkt 1.9.8 does, and IPv6 decodes them.
 The [IGMP and VRRP modules](docs/igmp-vrrp.md) parse and pack those messages the
 way dpkt 1.9.8 does, and IPv6 decodes them.
 The [ARP module](docs/arp.md) parses and packs ARP the way dpkt 1.9.8 does, and
