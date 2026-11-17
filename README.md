@@ -52,6 +52,9 @@ The [OSPF and SCTP modules](docs/ospf-sctp.md) parse and pack those packets the
 way dpkt 1.9.8 does, and IPv4 and IPv6 decode them.
 The [ARP module](docs/arp.md) parses and packs ARP the way dpkt 1.9.8 does, and
 Ethernet decodes it.
+The [SLL, SLL2 and loopback modules](docs/sll-loopback.md) parse and pack the
+link-layer headers of Linux cooked and null/loopback captures the way dpkt
+1.9.8 does.
 The [SSL and TLS module](docs/tls.md) parses and packs records, handshakes,
 hellos and certificate lists the way dpkt 1.9.8 does, with dpkt's cipher suite table.
 
