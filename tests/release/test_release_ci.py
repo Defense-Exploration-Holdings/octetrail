@@ -308,6 +308,23 @@ class ArtifactTests(unittest.TestCase):
             R.validate_dist(self.dist, self.root, "0.1.0")
 
 
+class ReleaseNotesTests(unittest.TestCase):
+    def test_each_section_lists_an_entry_once(self):
+        text = (ROOT / "docs/release-notes.md").read_text()
+        sections = text.split("\n## ")[1:]
+        self.assertTrue(sections)
+        for section in sections:
+            title, _, body = section.partition("\n")
+            heads = [
+                para.split("\n")[0]
+                for para in body.strip("\n").split("\n\n")
+                if para and not para.startswith(("- ", "  "))
+            ]
+            with self.subTest(section=title):
+                repeated = sorted({h for h in heads if heads.count(h) > 1})
+                self.assertEqual(repeated, [])
+
+
 class WorkflowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

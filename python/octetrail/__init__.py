@@ -26,15 +26,19 @@ from . import packet as packet
 from . import pim as pim
 from . import ppp as ppp
 from . import pppoe as pppoe
+from . import radius as radius
 from . import raw as raw
 from . import rip as rip
+from . import rtp as rtp
 from . import sctp as sctp
 from . import sll as sll
 from . import sll2 as sll2
 from . import ssl as ssl
 from . import stp as stp
+from . import stun as stun
 from . import tcp as tcp
 from . import tftp as tftp
+from . import tpkt as tpkt
 from . import udp as udp
 from . import vrrp as vrrp
 from .errors import Error, NeedData, PackError, UnpackError
@@ -68,6 +72,7 @@ __all__.append("ssl")
 __all__.extend(("ipip", "ipx", "llc", "stp"))
 __all__.extend(("icmp", "icmp6"))
 __all__.extend(("igmp", "vrrp"))
+__all__.extend(("radius", "rtp", "stun", "tpkt"))
 __all__.extend(("hsrp", "ntp", "rip", "tftp"))
 __all__.extend(("cdp", "dtp", "edp"))
 __all__.extend(("ppp", "pppoe"))

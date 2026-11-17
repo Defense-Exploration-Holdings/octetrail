@@ -42,6 +42,8 @@ The [GRE and PIM modules](docs/gre-pim.md) parse and pack those packets the way
 dpkt 1.9.8 does, and IPv6 decodes them.
 The [IGMP and VRRP modules](docs/igmp-vrrp.md) parse and pack those messages the
 way dpkt 1.9.8 does, and IPv6 decodes them.
+The [RADIUS, RTP, STUN and TPKT modules](docs/radius-rtp-stun-tpkt.md) parse and
+pack those messages the way dpkt 1.9.8 does.
 The [NTP, RIP, TFTP and HSRP modules](docs/ntp-rip-tftp-hsrp.md) parse and pack
 those messages the way dpkt 1.9.8 does.
 The [CDP, DTP and EDP modules](docs/cdp-dtp-edp.md) parse and pack those
