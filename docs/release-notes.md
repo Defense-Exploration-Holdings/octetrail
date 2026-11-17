@@ -1,6 +1,15 @@
 # Release notes
 
-## Unreleased
+## 0.5.0
+
+Breaking changes:
+
+- `IP`, `TCP`, `UDP` and `Ethernet` are now `Packet` subclasses, as in dpkt.
+  Unknown constructor keywords become attributes instead of raising
+  `TypeError`, and `repr()` follows dpkt.
+- `tcp.LimitError`, `udp.LimitError` and `ethernet.LimitError` are removed,
+  with the TCP, UDP and Ethernet size limits and their `DEFAULT_MAX_*`
+  constants.
 
 GRE and PIM now parse and pack the way dpkt 1.9.8 does:
 
