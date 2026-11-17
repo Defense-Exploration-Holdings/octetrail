@@ -342,6 +342,158 @@ def review_checks(package, module):
     }
 
 
+def as_json(v):
+    if isinstance(v, (bytes, bytearray, memoryview)):
+        return {"hex": bytes(v).hex(), "type": type(v).__name__}
+    if isinstance(v, (int, str, bool, type(None))):
+        return v
+    if isinstance(v, (list, tuple)):
+        return [as_json(x) for x in v]
+    if isinstance(v, dict):
+        return {str(k): as_json(x) for k, x in v.items()}
+    return {"repr": repr(v)}
+
+
+def attempt(action):
+    try:
+        return as_json(action())
+    except Exception as error:  # noqa: BLE001 - exceptions are observations.
+        return {"error": type(error).__name__, "message": str(error)}
+
+
+def kind(action):
+    """The outcome without the message, for errors whose text varies by Python version."""
+    found = attempt(action)
+    return found["error"] if isinstance(found, dict) and "error" in found else found
+
+
+def _query(name=QN, counts=(1, 0, 0, 0)):
+    return header(list(counts)) + name + b"\0\1\0\1"
+
+
+def _record(kind, rdata, owner=b"\xc0\x0c"):
+    return (
+        header([1, 1, 0, 0])
+        + QN
+        + b"\0\1\0\1"
+        + owner
+        + struct.pack("!HHIH", kind, 1, 60, len(rdata))
+        + rdata
+    )
+
+
+def observations(package):
+    """Outcomes compared with dpkt 1.9.8 as they are: classes, messages and reprs."""
+    D = package.dns
+
+    class Record(D.DNS.RR):
+        def unpack_rdata(self, buf, off):
+            if self.type == 0x20:
+                self.flags = self.rdata[:2]
+            else:
+                D.DNS.RR.unpack_rdata(self, buf, off)
+
+    class Question(D.DNS.Q):
+        pass
+
+    class Sub(D.DNS):
+        Q, RR = Question, Record
+
+    def subclass():
+        message = Sub(_record(0x20, b"\x60\x00\x0a\x00\x00\x01"))
+        return [
+            type(message.qd[0]).__name__,
+            type(message.an[0]).__name__,
+            message.an[0].flags,
+            repr(message),
+            bytes(message),
+        ]
+
+    def parsed(wire):
+        message = D.DNS(wire)
+        return [repr(message), [repr(q) for q in message.qd], [repr(r) for r in message.an]]
+
+    def packed(**keywords):
+        return bytes(D.DNS(**keywords))
+
+    mx = _record(15, b"\0\x0a\x04mail\xc0\x11")
+
+    def mx_repacked():
+        message = D.DNS(mx)
+        message.an[0].rdata = b""
+        return bytes(message)
+
+    def txt_repacked():
+        message = D.DNS(_record(16, b"\x03abc"))
+        message.an[0].rdata = b""
+        return bytes(message)
+
+    def label_ptrs_removed():
+        message = D.DNS(qd=[D.DNS.Q(name="a.b")])
+        bytes(message)
+        return hasattr(message, "label_ptrs")
+
+    def pointers():
+        table = {}
+        return [D.pack_name("x.note.example", 12, table), sorted(table.items())]
+
+    return {
+        "repr_query": attempt(lambda: parsed(_query())),
+        "repr_records": attempt(lambda: parsed(_record(1, b"\xc0\0\2\1") + b"tail")),
+        "repr_soa": attempt(
+            lambda: parsed(_record(6, b"\x02ns\xc0\x11\x04host\xc0\x11" + bytes(range(20))))
+        ),
+        "repr_txt": attempt(lambda: parsed(_record(16, b"\x03abc\x00\x05cut"))),
+        "default_message": attempt(lambda: [repr(D.DNS()), bytes(D.DNS()), len(D.DNS())]),
+        "default_q": attempt(lambda: repr(D.DNS.Q())),
+        "default_rr": attempt(lambda: repr(D.DNS.RR())),
+        "q_len": attempt(lambda: len(D.DNS.Q())),
+        "q_parse": attempt(lambda: D.DNS.Q(b"\0\0\1\0\1")),
+        "rr_str": attempt(lambda: str(D.DNS.RR())),
+        "bytearray_rdata": attempt(lambda: D.DNS(bytearray(_record(1, b"\1\2\3\4"))).an[0].rdata),
+        "subclass_hooks": attempt(subclass),
+        "short_header": attempt(lambda: D.DNS(bytes(11))),
+        "name_cut": attempt(lambda: D.DNS(_query(b"\x04note\x07exa"))),
+        "name_no_end": attempt(lambda: D.DNS(_query(b"\x04note")[:-4])),
+        "question_cut": attempt(lambda: D.DNS(_query()[:-1])),
+        "record_cut": attempt(lambda: D.DNS(_record(1, b"\1\2\3\4")[:-6])),
+        "pointer_forward": attempt(lambda: D.DNS(_query(b"\xc0\x20"))),
+        "label_type": attempt(lambda: D.DNS(_query(b"\x40abc\0"))),
+        "name_too_long": attempt(lambda: D.DNS(_query((b"\x3f" + b"a" * 63) * 4 + b"\0"))),
+        "unsupported_type": attempt(lambda: D.DNS(_record(99, b"x"))),
+        "soa_cut": attempt(lambda: D.DNS(_record(6, b"\0\0" + bytes(10)))),
+        "mx_cut": attempt(lambda: D.DNS(_record(15, b"\0"))),
+        "srv_cut": attempt(lambda: D.DNS(_record(33, b"\0\1\0"))),
+        "mx_repacked": attempt(mx_repacked),
+        "txt_repacked": attempt(txt_repacked),
+        "pack_id_range": attempt(lambda: packed(id=65536)),
+        "pack_default_q": kind(lambda: packed(qd=[D.DNS.Q()])),
+        "pack_object_q": attempt(lambda: packed(qd=[object()])),
+        "pack_long_label": kind(lambda: packed(qd=[D.DNS.Q(name="x" * 256)])),
+        "pack_bytes_name": kind(lambda: packed(qd=[D.DNS.Q(name=b"a")])),
+        "pack_unknown_rr": attempt(lambda: packed(an=[D.DNS.RR(name="", type=99)])),
+        "pack_missing_field": attempt(lambda: packed(an=[D.DNS.RR(name="", type=2)])),
+        "pack_long_rdata": attempt(
+            lambda: packed(an=[D.DNS.RR(name="", type=10, rdata=b"x" * 65536)])
+        ),
+        "pack_hdr_lists": attempt(lambda: D.DNS().pack_hdr()),
+        "label_ptrs_removed": attempt(label_ptrs_removed),
+        "pointers": attempt(pointers),
+        "pointer_too_far": attempt(lambda: D.pack_name("a", 0, {b"A.": 0x4000})),
+        "unpack_name_cut": attempt(lambda: D.unpack_name(b"\x01a", 0)),
+        "unpack_name_pointer": attempt(lambda: D.unpack_name(b"\0\x01b\xc0\x00", 1)),
+        "flags": attempt(
+            lambda: [
+                (lambda m: [m.qr, m.opcode, m.aa, m.tc, m.rd, m.ra, m.zero, m.rcode])(
+                    D.DNS(header([0, 0, 0, 0], 0xFFFF))
+                )
+            ]
+        ),
+        "bad_utf8_name": attempt(lambda: D.DNS(_query(b"\x02\xff\xfe\0"))),
+        "bad_utf8_text": attempt(lambda: D.DNS(_record(16, b"\x01\xff"))),
+    }
+
+
 def exercise(package, module):
     D = package.dns
     output = {}
@@ -415,6 +567,7 @@ def exercise(package, module):
         "constructors": constructors,
         "mutations": mutations,
         "review": review_checks(package, module),
+        "observations": observations(package),
     }
 
 
@@ -428,6 +581,17 @@ def provenance(module, version):
         "unverified DNS origin",
     )
     return package
+
+
+# Observations where OctetRail differs from 1.9.8 on purpose. A name or
+# character string that is not UTF-8 raises UnicodeDecodeError in dpkt;
+# OctetRail raises dns.TextDecodeError, which is both an UnpackError and a
+# UnicodeDecodeError, with dpkt's message.
+_DECODE = "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte"
+DECLARED = {
+    "bad_utf8_name": {"error": "TextDecodeError", "message": _DECODE},
+    "bad_utf8_text": {"error": "TextDecodeError", "message": _DECODE},
+}
 
 
 def main():
@@ -448,6 +612,7 @@ def main():
     )
     version = tomllib.loads((C.ROOT / "pyproject.toml").read_text())["project"]["version"]
     count = 0
+    observed = []
     for python, module, v in [
         (a.oracle_196, "dpkt", "1.9.6"),
         (a.oracle_198, "dpkt", "1.9.8"),
@@ -461,12 +626,17 @@ def main():
             check=True,
         )
         report = json.loads(r.stdout)
+        observed.append((module + v, report["observations"]))
         C.require(
             report["cases"] == {c["id"]: expected(c, module) for c in cases()},
             "DNS observation mismatch " + module + v,
         )
         C.require(len(report["constructors"]) == 12, "DNS constructor coverage")
         count += 1
+    reference = observed[1][1]
+    for name, found in observed[2:]:
+        wrong = sorted(k for k in reference if found.get(k) != DECLARED.get(k, reference[k]))
+        C.require(not wrong, "DNS observation mismatch " + name + ": " + ", ".join(wrong))
     print(
         json.dumps(
             {
@@ -482,6 +652,11 @@ def main():
                 "review_address_edits_per_provider": 2,
                 "review_minimum_and_count_checks_per_provider": 2,
                 "providers": count,
+                "observations": len(reference),
+                "dpkt_196_differs_on": sorted(
+                    k for k in reference if observed[0][1].get(k) != reference[k]
+                ),
+                "declared_differences": sorted(DECLARED),
                 "unexpected_mismatches": 0,
             },
             indent=2,

@@ -63,12 +63,19 @@ impl fmt::Display for Error {
 }
 impl std::error::Error for Error {}
 
-struct Budget {
-    steps: usize,
-    bytes: usize,
+/// The work a parse may still do: name steps and decoded bytes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Budget {
+    pub steps: usize,
+    pub bytes: usize,
+}
+impl Default for Budget {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 impl Budget {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             steps: MAX_STEPS,
             bytes: MAX_WORK_BYTES,
@@ -106,7 +113,19 @@ pub fn unpack_name(data: &[u8], offset: usize) -> Result<(String, usize), Error>
     name(data, offset, &mut Budget::new())
 }
 
-fn name(data: &[u8], mut offset: usize, budget: &mut Budget) -> Result<(String, usize), Error> {
+fn name(data: &[u8], offset: usize, budget: &mut Budget) -> Result<(String, usize), Error> {
+    let (raw, next) = unpack_name_raw(data, offset, budget)?;
+    let name = String::from_utf8(raw).map_err(|_| Error::Encoding)?;
+    Ok((name, next))
+}
+
+/// [`unpack_name`] without the UTF-8 check, charging `budget`. The labels are
+/// joined with dots.
+pub fn unpack_name_raw(
+    data: &[u8],
+    mut offset: usize,
+    budget: &mut Budget,
+) -> Result<(Vec<u8>, usize), Error> {
     let mut out = Vec::new();
     let mut saved = None;
     let mut start = offset;
@@ -150,8 +169,21 @@ fn name(data: &[u8], mut offset: usize, budget: &mut Budget) -> Result<(String, 
             _ => return Err(Error::LabelType(n)),
         }
     }
-    let name = String::from_utf8(out).map_err(|_| Error::Encoding)?;
-    Ok((name, saved.unwrap_or(offset)))
+    Ok((out, saved.unwrap_or(offset)))
+}
+
+/// `(start, end)` of each TXT or HINFO character string in `raw`, cut to the
+/// bytes present, as dpkt's loop reads them.
+pub fn text_ranges(raw: &[u8]) -> Vec<(usize, usize)> {
+    let mut found = Vec::new();
+    let mut at = 0;
+    while at < raw.len() {
+        let start = at + 1;
+        let end = (start + usize::from(raw[at])).min(raw.len());
+        found.push((start.min(end), end));
+        at = start + usize::from(raw[at]);
+    }
+    found
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -327,28 +359,64 @@ pub fn pack_name(
     offset: usize,
     pointers: &mut HashMap<Vec<u8>, usize>,
 ) -> Result<Vec<u8>, Error> {
+    let table = std::cell::RefCell::new(pointers);
+    let found = pack_name_with(
+        value.as_bytes(),
+        offset,
+        |key| Ok::<_, ()>(table.borrow().get(key).copied()),
+        |key, at| {
+            table.borrow_mut().insert(key, at);
+            Ok(())
+        },
+    );
+    match found {
+        Ok(raw) => Ok(raw),
+        Err(PackNameError::Pointer(_)) => Err(Error::Pack("DNS compression pointer out of range")),
+        Err(PackNameError::Label(_)) => Err(Error::Pack("DNS label exceeds 255 bytes")),
+        Err(PackNameError::Lookup(())) => unreachable!("a HashMap lookup cannot fail"),
+    }
+}
+
+/// Why [`pack_name_with`] stopped.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PackNameError<E> {
+    /// `0xc000 | pointer` does not fit 16 bits; the value is that sum.
+    Pointer(usize),
+    /// A label is longer than 255 bytes; the value is its length.
+    Label(usize),
+    /// The caller's lookup or insert failed.
+    Lookup(E),
+}
+
+/// [`pack_name`] over the encoded name, with the suffix table behind `get`
+/// and `put`, so that a caller can keep it in its own map.
+pub fn pack_name_with<E>(
+    value: &[u8],
+    offset: usize,
+    mut get: impl FnMut(&[u8]) -> Result<Option<usize>, E>,
+    mut put: impl FnMut(Vec<u8>, usize) -> Result<(), E>,
+) -> Result<Vec<u8>, PackNameError<E>> {
     let mut labels: Vec<&[u8]> = if value.is_empty() {
         Vec::new()
     } else {
-        value.as_bytes().split(|b| *b == b'.').collect()
+        value.split(|b| *b == b'.').collect()
     };
     labels.push(b"");
     let mut out = Vec::new();
     for index in 0..labels.len() {
         let key = labels[index..].join(&b'.').to_ascii_uppercase();
-        if let Some(&pointer) = pointers.get(&key) {
-            let pointer = u16::try_from(0xc000 | pointer)
-                .map_err(|_| Error::Pack("DNS compression pointer out of range"))?;
+        if let Some(pointer) = get(&key).map_err(PackNameError::Lookup)? {
+            let pointer = 0xc000 | pointer;
+            let pointer = u16::try_from(pointer).map_err(|_| PackNameError::Pointer(pointer))?;
             out.extend_from_slice(&pointer.to_be_bytes());
             return Ok(out);
         }
         let at = offset + out.len();
         if key.len() > 1 && at < 0xc000 {
-            pointers.insert(key, at);
+            put(key, at).map_err(PackNameError::Lookup)?;
         }
         let label = labels[index];
-        let n =
-            u8::try_from(label.len()).map_err(|_| Error::Pack("DNS label exceeds 255 bytes"))?;
+        let n = u8::try_from(label.len()).map_err(|_| PackNameError::Label(label.len()))?;
         out.push(n);
         out.extend_from_slice(label);
     }
@@ -481,5 +549,22 @@ mod tests {
             bytes: 0,
         };
         assert_eq!(empty_bytes.charge(1), Err(Error::Limit));
+    }
+
+    #[test]
+    fn text_strings_are_cut_to_the_bytes_present() {
+        assert_eq!(
+            text_ranges(b"\x02ab\x00\x05xy"),
+            vec![(1, 3), (4, 4), (5, 7)]
+        );
+        assert_eq!(text_ranges(b""), vec![]);
+    }
+
+    #[test]
+    fn raw_names_skip_the_utf8_check() {
+        let mut budget = Budget::new();
+        let (name, next) = unpack_name_raw(b"\x02\xff\xfe\0", 0, &mut budget).unwrap();
+        assert_eq!((name, next), (vec![0xff, 0xfe], 4));
+        assert_eq!(budget.steps, MAX_STEPS - 3);
     }
 }
