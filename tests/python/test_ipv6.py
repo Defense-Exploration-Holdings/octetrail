@@ -115,11 +115,31 @@ class IPv6Tests(unittest.TestCase):
             self.assertEqual(len(packet.data.data), size - 8)
             self.assertEqual(bytes(packet), wire)
             self.assertIsInstance(ethernet.Ethernet(MAC + wire).data.data, udp.UDP)
-        packet.data.sum = 0
-        with self.assertRaises(struct.error):
-            bytes(packet)
         with self.assertRaises(udp.LimitError):
             udp.UDP(datagram)
+
+    def test_jumbo_checksums_use_a_32_bit_length(self):
+        def ones_complement(buf):
+            buf += b"\0" * (len(buf) % 2)
+            total = sum(struct.unpack(">%dH" % (len(buf) // 2), buf))
+            while total > 0xFFFF:
+                total = (total & 0xFFFF) + (total >> 16)
+            return ~total & 0xFFFF
+
+        tcp_header = struct.pack(">HHIIBBHHH", 1, 2, 3, 4, 0x50, 0x10, 100, 0, 0)
+        for nxt, transport in (
+            (17, struct.pack(">HHHH", 1000, 53, 0, 0)),
+            (6, tcp_header),
+        ):
+            for size in (1000, 65535, 65536, 200000):
+                segment = transport + b"x" * (size - len(transport))
+                packet = ip6.IP6(F.base(nxt, segment, plen=0))
+                packet.data.sum = 0
+                wire = bytes(packet)
+                src, dst = packet.src, packet.dst
+                pseudo = struct.pack(">16s16sI3xB", src, dst, size, nxt)
+                self.assertEqual(packet.data.sum, ones_complement(pseudo + segment))
+                self.assertEqual(ones_complement(pseudo + wire[40:]), 0)
 
     def test_layer_lookup(self):
         packet = ip6.IP6(case("udp"))
@@ -136,6 +156,17 @@ class IPv6Tests(unittest.TestCase):
         self.assertIs(packet[ip.IP], packet.data)
         self.assertIs(packet[udp.UDP], packet.data.data)
         self.assertNotIn(ip6.IP6, packet)
+
+    def test_layer_lookup_through_built_layers(self):
+        inner = ip6.IP6(nxt=59)
+        packet = ip6.IP6(data=tcp.TCP(data=inner))
+        self.assertIn(tcp.TCP, packet)
+        self.assertIs(packet[ip6.IP6], inner)
+        self.assertIn(ip6.IP6, packet)
+        self.assertNotIn(udp.UDP, packet)
+        packet = ip6.IP6(data=udp.UDP(data=inner))
+        self.assertIn(udp.UDP, packet)
+        self.assertIn(ip6.IP6, packet)
 
     def test_errors_keep_the_headers_read(self):
         with self.assertRaisesRegex(NeedData, "got 39, 40 needed at least"):

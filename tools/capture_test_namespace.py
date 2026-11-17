@@ -38,7 +38,7 @@ def mapped_capture_namespace():
 
     prefix = Path(sys.prefix).resolve()
     distribution = importlib.metadata.distribution("octetrail")
-    assert importlib.metadata.version("octetrail") == "0.4.0"
+    assert importlib.metadata.version("octetrail") == "0.4.1"
     assert (
         Path(octetrail.__file__).resolve()
         == Path(distribution.locate_file("octetrail/__init__.py")).resolve()
