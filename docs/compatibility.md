@@ -61,8 +61,6 @@ API. Import compatibility and distribution compatibility are separate: an
 explicit provider or test-only namespace map cannot satisfy a dpkt dependency
 pin. No unchanged application compatibility or performance claim is made.
 
-Snaplen-truncated IPv4 datagrams remain raw Ethernet payload bytes without an
-`ip` alias; the references can expose partial IP/transport objects. Direct IPv4
-parsing raises `NeedData`. Inconsistent IPv4 lengths below the complete header
-also fall back to raw bytes inside Ethernet while retaining direct `ValueError`
-behavior. See the [composition contract](composition.md) for exception boundaries.
+Snaplen-truncated and inconsistent IPv4 datagrams parse as they do in dpkt
+1.9.8: options and payload are sliced from the bytes present. See the
+[composition contract](composition.md) for exception boundaries.
