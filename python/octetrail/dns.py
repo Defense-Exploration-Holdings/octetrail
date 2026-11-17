@@ -1,9 +1,19 @@
-"""Offline DNS messages, parsed and packed the way dpkt 1.9.8 does."""
+"""Domain Name System messages, parsed and packed the way dpkt 1.9.8 does.
 
+As in dpkt, ``DNS`` walks the message with ``unpack_q``, ``unpack_rr`` and
+``RR.unpack_rdata`` and packs it with ``pack_q``, ``pack_rr`` and
+``RR.pack_rdata``, so a subclass can replace any step. Names are read and
+written in Rust.
+"""
+
+import codecs
+import contextvars
 import operator
+import struct
 
 from . import _native
 from .errors import NeedData, PackError, UnpackError
+from .packet import Packet
 
 DNS_Q, DNS_R = 0, 1
 DNS_QUERY, DNS_IQUERY, DNS_STATUS, DNS_NOTIFY, DNS_UPDATE = 0, 1, 2, 4, 5
@@ -24,6 +34,7 @@ DNS_A, DNS_NS, DNS_CNAME, DNS_SOA, DNS_NULL, DNS_PTR, DNS_HINFO = 1, 2, 5, 6, 10
 DNS_MX, DNS_TXT, DNS_AAAA, DNS_SRV, DNS_OPT = 15, 16, 28, 33, 41
 DNS_IN, DNS_CHAOS, DNS_HESIOD, DNS_ANY = 1, 3, 4, 255
 MAX_WORK_STEPS = 1 << 24
+MAX_WORK_BYTES = 64 * 1024 * 1024
 LimitError = _native.PacketLimitError
 
 
@@ -31,239 +42,383 @@ class ParseLimitError(UnpackError, LimitError):
     """A DNS parse budget refusal, catchable by both existing exception families."""
 
 
-_NAMES = {
-    DNS_NS: ("nsname",),
-    DNS_CNAME: ("cname",),
-    DNS_PTR: ("ptrname",),
-    DNS_MX: ("mxname",),
-    DNS_SOA: ("mname", "rname"),
-    DNS_SRV: ("srvname",),
-}
-_NUMBERS = {
-    DNS_MX: (("preference", 16),),
-    DNS_SOA: tuple((n, 32) for n in ("serial", "refresh", "retry", "expire", "minimum")),
-    DNS_SRV: tuple((n, 16) for n in ("priority", "weight", "port")),
-}
-_FORMS = {DNS_NS: "name", DNS_CNAME: "name", DNS_PTR: "name", DNS_SOA: "soa", DNS_MX: "mx"}
-_FORMS.update({DNS_SRV: "srv", DNS_TXT: "text", DNS_HINFO: "text"})
+class TextDecodeError(UnpackError, UnicodeDecodeError):
+    """A name or character string is not UTF-8.
+
+    dpkt raises UnicodeDecodeError here. This class is also an UnpackError, so
+    code that catches either one handles it.
+    """
 
 
-def _uint(value, width):
+# While DNS.unpack runs: the buffer it was given, that buffer as bytes and the
+# work budget left, so that names are read without copying the message again.
+_PARSE = contextvars.ContextVar("octetrail_dns_parse", default=None)
+
+
+def _decode(raw):
     try:
-        value = operator.index(value)
-    except TypeError:
-        raise PackError("DNS field requires an integer") from None
-    if not 0 <= value < 1 << width:
-        raise PackError("DNS field out of range")
-    return value
-
-
-def _name(value):
-    if not isinstance(value, str):
-        raise PackError("DNS names require text")
-    return value
-
-
-def _bytes(value, what):
-    if not isinstance(value, (bytes, bytearray, memoryview)):
-        raise PackError(what + " requires bytes")
-    return bytes(value)
+        return codecs.decode(raw, "utf-8")
+    except UnicodeDecodeError as error:
+        raise TextDecodeError(*error.args) from None
 
 
 def pack_name(name, off, label_ptrs):
-    """Encode `name` for offset `off`, compressing against and adding to `label_ptrs`."""
-    if not isinstance(label_ptrs, dict):
-        raise TypeError("label_ptrs must be a dict")
+    """Encode ``name`` for offset ``off``, compressing against ``label_ptrs``.
+
+    The suffixes written below offset 0xc000 are added to ``label_ptrs``.
+    """
+    name = codecs.encode(name, "utf-8")
     try:
-        return _native._dns_pack_name(_name(name), operator.index(off), label_ptrs)
-    except _native.DnsPackError as error:
-        raise PackError(str(error)) from None
+        return _native._dns_pack_name(name, operator.index(off), label_ptrs)
+    except _native.DnsLabelError as error:
+        struct.pack("B", error.args[0])
+        raise
+    except _native.DnsPointerError as error:
+        struct.pack(">H", error.args[0])
+        raise
 
 
 def unpack_name(buf, off):
-    """Decode the possibly compressed name at `off`; return it and the offset after it."""
+    """Decode the possibly compressed name at ``off``; return it and the offset after it."""
+    parse = _PARSE.get()
+    if parse is not None and parse[0] is buf:
+        raw, budget = parse[1], parse[2]
+    else:
+        raw = buf if type(buf) is bytes else bytes(buf)
+        budget = [MAX_WORK_STEPS, MAX_WORK_BYTES]
     try:
-        return _native._dns_unpack_name(bytes(buf), operator.index(off))
+        name, off, budget[0], budget[1] = _native._dns_unpack_name(
+            raw, operator.index(off), budget[0], budget[1]
+        )
     except _native.PacketLimitError as error:
         raise ParseLimitError(str(error)) from None
-    except _native.TruncatedError as error:
-        raise NeedData(str(error)) from None
+    except _native.TruncatedError:
+        raise NeedData() from None
     except _native.DnsFormatError as error:
         raise UnpackError(str(error)) from None
+    return _decode(name), off
 
 
-class Q:
-    """DNS question."""
+class DNS(Packet):
+    """Domain Name System message.
 
-    def __init__(self, **kwargs):
-        self.name = ""
-        self.type = DNS_A
-        self.cls = DNS_IN
-        for key, value in kwargs.items():
-            setattr(self, key, value)
+    Attributes:
+        id: Identification.
+        op: The flags and codes, also read through ``qr``, ``opcode``, ``aa``,
+            ``tc``, ``rd``, ``ra``, ``zero``, ``ad``, ``cd`` and ``rcode``.
+        qd, an, ns, ar: The question, answer, authority and additional
+            sections. The header counts are taken from their lengths.
+    """
 
-    def __len__(self):
-        raise NotImplementedError
-
-    __str__ = __len__
-
-    def unpack(self, buf):
-        raise NotImplementedError
-
-    def _wire(self):
-        return _name(self.name), _uint(self.type, 16), _uint(self.cls, 16)
-
-
-class RR(Q):
-    """DNS resource record."""
-
-    def __init__(self, **kwargs):
-        self.ttl = 0
-        self.rlen = 4
-        self.rdata = b""
-        super().__init__(**kwargs)
-
-    def _wire(self):
-        """Resource data as dpkt's pack_rdata chooses it: nonempty rdata wins."""
-        name, kind, cls = super()._wire()
-        ttl = _uint(self.ttl, 32)
-        names, numbers, text = [], [], []
-        if self.rdata:
-            form, raw = "raw", _bytes(self.rdata, "DNS rdata")
-        elif kind == DNS_A:
-            form, raw = "raw", _bytes(self.ip, "DNS address")
-        elif kind == DNS_AAAA:
-            form, raw = "raw", _bytes(self.ip6, "DNS address")
-        elif kind == DNS_OPT:
-            form, raw = "raw", b""
-        elif kind in _FORMS:
-            form, raw = _FORMS[kind], b""
-            names = [_name(getattr(self, n)) for n in _NAMES.get(kind, ())]
-            for field, width in _NUMBERS.get(kind, ()):
-                value = getattr(self, field)
-                if field == "preference" and isinstance(value, tuple) and len(value) == 1:
-                    value = value[0]  # a parsed MX preference is a one-item tuple, as in dpkt
-                numbers.append(_uint(value, width))
-            if form == "text":
-                for chunk in self.text:
-                    chunk = chunk.encode("utf-8") if isinstance(chunk, str) else chunk
-                    text.append(_bytes(chunk, "DNS text"))
-        else:
-            raise PackError("RR type %s is not supported" % kind)
-        return name, kind, cls, ttl, form, raw, names, numbers, text
-
-
-def _flag(mask):
-    def get(self):
-        return int(bool(self.op & mask))
-
-    def set_(self, value):
-        self.op = (self.op | mask) if value else (self.op & ~mask)
-
-    return property(get, set_)
-
-
-class DNS:
-    """Domain Name System message, parsed and packed as dpkt 1.9.8 does."""
-
-    Q, RR = Q, RR
-    qr, aa, tc, rd, ra, zero, ad, cd = (
-        _flag(x) for x in (DNS_QR, DNS_AA, DNS_TC, DNS_RD, DNS_RA, DNS_Z, DNS_AD, DNS_CD)
+    __hdr__ = (
+        ("id", "H", 0),
+        ("op", "H", DNS_RD),
+        ("qd", "H", []),
+        ("an", "H", []),
+        ("ns", "H", []),
+        ("ar", "H", []),
     )
 
-    def __init__(self, *args, **kwargs):
-        if len(args) > 1:
-            raise TypeError("DNS accepts at most one buffer")
-        self.data = b""
-        if args:
-            self.unpack(args[0])
-            return
-        self.id, self.op = 0, DNS_RD
-        self.qd, self.an, self.ns, self.ar = [], [], [], []
-        for key, value in kwargs.items():
-            setattr(self, key, value)
+    @property
+    def qr(self):
+        """Query (0) or response (1)."""
+        return int((self.op & DNS_QR) == DNS_QR)
+
+    @qr.setter
+    def qr(self, v):
+        if v:
+            self.op |= DNS_QR
+        else:
+            self.op &= ~DNS_QR
 
     @property
     def opcode(self):
-        return (self.op >> 11) & 15
+        """Operation code, four bits."""
+        return (self.op >> 11) & 0xF
 
     @opcode.setter
-    def opcode(self, value):
-        self.op = (self.op & ~0x7800) | ((operator.index(value) & 15) << 11)
+    def opcode(self, v):
+        self.op = (self.op & ~0x7800) | ((v & 0xF) << 11)
+
+    @property
+    def aa(self):
+        """Authoritative answer."""
+        return int((self.op & DNS_AA) == DNS_AA)
+
+    @aa.setter
+    def aa(self, v):
+        if v:
+            self.op |= DNS_AA
+        else:
+            self.op &= ~DNS_AA
+
+    @property
+    def tc(self):
+        """Truncated."""
+        return int((self.op & DNS_TC) == DNS_TC)
+
+    @tc.setter
+    def tc(self, v):
+        if v:
+            self.op |= DNS_TC
+        else:
+            self.op &= ~DNS_TC
+
+    @property
+    def rd(self):
+        """Recursion desired."""
+        return int((self.op & DNS_RD) == DNS_RD)
+
+    @rd.setter
+    def rd(self, v):
+        if v:
+            self.op |= DNS_RD
+        else:
+            self.op &= ~DNS_RD
+
+    @property
+    def ra(self):
+        """Recursion available."""
+        return int((self.op & DNS_RA) == DNS_RA)
+
+    @ra.setter
+    def ra(self, v):
+        if v:
+            self.op |= DNS_RA
+        else:
+            self.op &= ~DNS_RA
+
+    @property
+    def zero(self):
+        """The reserved bit."""
+        return int((self.op & DNS_Z) == DNS_Z)
+
+    @zero.setter
+    def zero(self, v):
+        if v:
+            self.op |= DNS_Z
+        else:
+            self.op &= ~DNS_Z
+
+    @property
+    def ad(self):
+        """Authenticated data. dpkt has no accessor for this bit."""
+        return int((self.op & DNS_AD) == DNS_AD)
+
+    @ad.setter
+    def ad(self, v):
+        if v:
+            self.op |= DNS_AD
+        else:
+            self.op &= ~DNS_AD
+
+    @property
+    def cd(self):
+        """Checking disabled. dpkt has no accessor for this bit."""
+        return int((self.op & DNS_CD) == DNS_CD)
+
+    @cd.setter
+    def cd(self, v):
+        if v:
+            self.op |= DNS_CD
+        else:
+            self.op &= ~DNS_CD
 
     @property
     def rcode(self):
-        return self.op & 15
+        """Response code, four bits."""
+        return self.op & 0xF
 
     @rcode.setter
-    def rcode(self, value):
-        self.op = (self.op & ~15) | (operator.index(value) & 15)
+    def rcode(self, v):
+        self.op = (self.op & ~0xF) | (v & 0xF)
+
+    class Q(Packet):
+        """DNS question. As in dpkt, it is packed and parsed only by DNS."""
+
+        __hdr__ = (
+            ("name", "1025s", b""),
+            ("type", "H", DNS_A),
+            ("cls", "H", DNS_IN),
+        )
+
+        def __len__(self):
+            raise NotImplementedError
+
+        __str__ = __len__
+
+        def unpack(self, buf):
+            raise NotImplementedError
+
+    class RR(Q):
+        """DNS resource record."""
+
+        __hdr__ = (
+            ("name", "1025s", b""),
+            ("type", "H", DNS_A),
+            ("cls", "H", DNS_IN),
+            ("ttl", "I", 0),
+            ("rlen", "H", 4),
+            ("rdata", "s", b""),
+        )
+
+        def pack_rdata(self, off, label_ptrs):
+            """Return the resource data, written at ``off`` in the message.
+
+            A nonempty ``rdata`` is returned as it is. Otherwise the fields of
+            the record type are packed.
+            """
+            if self.rdata:
+                return self.rdata
+            if self.type == DNS_A:
+                return self.ip
+            elif self.type == DNS_NS:
+                return pack_name(self.nsname, off, label_ptrs)
+            elif self.type == DNS_CNAME:
+                return pack_name(self.cname, off, label_ptrs)
+            elif self.type == DNS_PTR:
+                return pack_name(self.ptrname, off, label_ptrs)
+            elif self.type == DNS_SOA:
+                l_ = []
+                l_.append(pack_name(self.mname, off, label_ptrs))
+                l_.append(pack_name(self.rname, off + len(l_[0]), label_ptrs))
+                l_.append(
+                    struct.pack(
+                        ">IIIII", self.serial, self.refresh, self.retry, self.expire, self.minimum
+                    )
+                )
+                return b"".join(l_)
+            elif self.type == DNS_MX:
+                return struct.pack(">H", self.preference) + pack_name(
+                    self.mxname, off + 2, label_ptrs
+                )
+            elif self.type == DNS_TXT or self.type == DNS_HINFO:
+                return b"".join(struct.pack("B", len(x)) + x for x in self.text)
+            elif self.type == DNS_AAAA:
+                return self.ip6
+            elif self.type == DNS_SRV:
+                return struct.pack(">HHH", self.priority, self.weight, self.port) + pack_name(
+                    self.srvname, off + 6, label_ptrs
+                )
+            elif self.type == DNS_OPT:
+                return b""
+            else:
+                raise PackError("RR type %s is not supported" % self.type)
+
+        def unpack_rdata(self, buf, off):
+            """Set the fields of the record type from the message ``buf``.
+
+            ``off`` is where the resource data starts.
+            """
+            if self.type == DNS_A:
+                self.ip = self.rdata
+            elif self.type == DNS_NS:
+                self.nsname, off = unpack_name(buf, off)
+            elif self.type == DNS_CNAME:
+                self.cname, off = unpack_name(buf, off)
+            elif self.type == DNS_PTR:
+                self.ptrname, off = unpack_name(buf, off)
+            elif self.type == DNS_SOA:
+                self.mname, off = unpack_name(buf, off)
+                self.rname, off = unpack_name(buf, off)
+                self.serial, self.refresh, self.retry, self.expire, self.minimum = struct.unpack(
+                    ">IIIII", buf[off : off + 20]
+                )
+            elif self.type == DNS_MX:
+                self.preference = struct.unpack(">H", self.rdata[:2])
+                self.mxname, off = unpack_name(buf, off + 2)
+            elif self.type == DNS_TXT or self.type == DNS_HINFO:
+                rdata = self.rdata
+                raw = rdata if type(rdata) is bytes else bytes(rdata)
+                self.text = [_decode(rdata[s:e]) for s, e in _native._dns_text(raw)]
+            elif self.type == DNS_AAAA:
+                self.ip6 = self.rdata
+            elif self.type == DNS_NULL:
+                self.null = codecs.encode(self.rdata, "hex")
+            elif self.type == DNS_SRV:
+                self.priority, self.weight, self.port = struct.unpack(">HHH", self.rdata[:6])
+                self.srvname, off = unpack_name(buf, off + 6)
+            elif self.type == DNS_OPT:
+                pass  # RFC 6891: OPT is a pseudo-RR that carries no DNS data.
+            else:
+                raise UnpackError("RR type %s is not supported" % self.type)
+
+    def pack_q(self, buf, q):
+        """Append a packed question to ``buf`` and return it."""
+        return (
+            buf + pack_name(q.name, len(buf), self.label_ptrs) + struct.pack(">HH", q.type, q.cls)
+        )
+
+    def unpack_q(self, buf, off):
+        """Return the question at ``off`` and the offset after it."""
+        q = self.Q()
+        q.name, off = unpack_name(buf, off)
+        q.type, q.cls = struct.unpack(">HH", buf[off : off + 4])
+        off += 4
+        return q, off
+
+    def pack_rr(self, buf, rr):
+        """Append a packed resource record to ``buf`` and return it."""
+        name = pack_name(rr.name, len(buf), self.label_ptrs)
+        rdata = rr.pack_rdata(len(buf) + len(name) + 10, self.label_ptrs)
+        return buf + name + struct.pack(">HHIH", rr.type, rr.cls, rr.ttl, len(rdata)) + rdata
+
+    def unpack_rr(self, buf, off):
+        """Return the resource record at ``off`` and the offset after it."""
+        rr = self.RR()
+        rr.name, off = unpack_name(buf, off)
+        rr.type, rr.cls, rr.ttl, rdlen = struct.unpack(">HHIH", buf[off : off + 10])
+        off += 10
+        rr.rdata = buf[off : off + rdlen]
+        rr.rlen = rdlen
+        rr.unpack_rdata(buf, off)
+        off += rdlen
+        return rr, off
 
     def unpack(self, buf):
-        """Decode a message. Bytes after the declared sections are dropped, as in dpkt."""
-        if not isinstance(buf, (bytes, bytearray, memoryview)):
-            raise TypeError("DNS unpack requires bytes")
+        Packet.unpack(self, buf)
+        raw = buf if type(buf) is bytes else bytes(buf)
+        token = _PARSE.set((buf, raw, [MAX_WORK_STEPS, MAX_WORK_BYTES]))
         try:
-            id_, op, questions, sections = _native._dns_unpack(bytes(buf))
-        except _native.PacketLimitError as error:
-            raise ParseLimitError(str(error)) from None
-        except _native.TruncatedError as error:
-            raise NeedData(str(error)) from None
-        except _native.DnsFormatError as error:
-            raise UnpackError(str(error)) from None
-        self.id, self.op = id_, op
-        self.qd = [Q(name=name, type=kind, cls=cls) for name, kind, cls in questions]
-        self.an, self.ns, self.ar = ([_record(*row) for row in rows] for rows in sections)
+            off = self.__hdr_len__
+            cnt = self.qd
+            self.qd = []
+            for _ in range(cnt):
+                q, off = self.unpack_q(buf, off)
+                self.qd.append(q)
+            for x in ("an", "ns", "ar"):
+                cnt = getattr(self, x, 0)
+                setattr(self, x, [])
+                for _ in range(cnt):
+                    rr, off = self.unpack_rr(buf, off)
+                    getattr(self, x).append(rr)
+        finally:
+            _PARSE.reset(token)
         self.data = b""
-
-    def _sections(self):
-        sections = [self.qd, self.an, self.ns, self.ar]
-        if any(not isinstance(s, list) for s in sections):
-            raise TypeError("DNS sections require lists")
-        if any(not isinstance(q, Q) for q in self.qd) or any(
-            not isinstance(r, RR) for s in sections[1:] for r in s
-        ):
-            raise TypeError("DNS section member type mismatch")
-        return sections
-
-    def pack_hdr(self):
-        sections = self._sections()
-        try:
-            return _native._dns_header(
-                _uint(self.id, 16), _uint(self.op, 16), tuple(map(len, sections))
-            )
-        except _native.DnsPackError as error:
-            raise PackError(str(error)) from None
-
-    def __bytes__(self):
-        """Pack the header and sections. Like dpkt, `data` is not packed."""
-        sections = self._sections()
-        questions = [q._wire() for q in self.qd]
-        records = [[r._wire() for r in rows] for rows in sections[1:]]
-        try:
-            return _native._dns_pack(_uint(self.id, 16), _uint(self.op, 16), questions, records)
-        except _native.DnsPackError as error:
-            raise PackError(str(error)) from None
 
     def __len__(self):
         return len(bytes(self))
 
+    def __bytes__(self):
+        # As in dpkt, the names are compressed against those written before them.
+        self.label_ptrs = {}
+        buf = struct.pack(
+            self.__hdr_fmt__,
+            self.id,
+            self.op,
+            len(self.qd),
+            len(self.an),
+            len(self.ns),
+            len(self.ar),
+        )
+        for q in self.qd:
+            buf = self.pack_q(buf, q)
+        for x in ("an", "ns", "ar"):
+            for rr in getattr(self, x):
+                buf = self.pack_rr(buf, rr)
+        del self.label_ptrs
+        return buf
 
-def _record(name, kind, cls, ttl, rlen, rdata, names, numbers, text):
-    """A parsed RR with the decoded fields dpkt's unpack_rdata sets for its type."""
-    rr = RR(name=name, type=kind, cls=cls, ttl=ttl, rlen=rlen, rdata=rdata)
-    for key, value in zip(_NAMES.get(kind, ()), names, strict=True):
-        setattr(rr, key, value)
-    for (key, _), value in zip(_NUMBERS.get(kind, ()), numbers, strict=True):
-        setattr(rr, key, value)
-    if kind == DNS_MX:
-        rr.preference = (rr.preference,)
-    if kind in (DNS_TXT, DNS_HINFO):
-        rr.text = text
-    if kind == DNS_A:
-        rr.ip = rdata
-    if kind == DNS_AAAA:
-        rr.ip6 = rdata
-    if kind == DNS_NULL:
-        rr.null = rdata.hex().encode("ascii")
-    return rr
+
+Q = DNS.Q
+RR = DNS.RR

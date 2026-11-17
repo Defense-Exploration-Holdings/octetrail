@@ -46,7 +46,9 @@ opaque IP/TCP options and ordinary IPv4/transport checksum updates. The
 [IPv6 module](ipv6.md) parses and packs IPv6 and its extension headers the way
 dpkt 1.9.8 does. Payload protocols without an OctetRail module stay bytes.
 The [DNS module](dns.md) parses and packs messages, questions, records and
-compressed names the way dpkt 1.9.8 does. It does not add transport dispatch.
+compressed names the way dpkt 1.9.8 does, with dpkt's classes and subclass
+hooks, except one declared difference for text that is not UTF-8. It does not
+add transport dispatch.
 The [HTTP module](http.md) parses and packs HTTP/1.x requests and responses,
 including chunked bodies, the way dpkt 1.9.8 does. No automatic application
 dispatch is added.

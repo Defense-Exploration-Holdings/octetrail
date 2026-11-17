@@ -22,10 +22,9 @@ same pinned dpkt references and retained BSD attribution. The bounded Rust
 extension framing, raw selector, opaque extension wrapper and synthetic fixtures
 are original project work; extension-specific dpkt classes are not copied.
 
-The explicit DNS facade uses dpkt 1.9.6 and 1.9.8 as behavior references for
-header/question/record fields. The bounded Rust name and message algorithms,
-structured serialization policy and independent synthetic fixtures are original
-work, under the retained upstream BSD attribution and licensing above.
+The DNS facade adapts dpkt's dns.py, including its classes, hooks and
+constants, under the same retained upstream BSD license. The bounded Rust name
+algorithms and independent synthetic fixtures are original work.
 
 The HTTP facade follows the pinned dpkt field and rendering APIs under the
 retained BSD attribution. Native framing and synthetic fixtures are original work.
