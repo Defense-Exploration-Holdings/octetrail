@@ -42,6 +42,8 @@ The [GRE and PIM modules](docs/gre-pim.md) parse and pack those packets the way
 dpkt 1.9.8 does, and IPv6 decodes them.
 The [IGMP and VRRP modules](docs/igmp-vrrp.md) parse and pack those messages the
 way dpkt 1.9.8 does, and IPv6 decodes them.
+The [ATA over Ethernet modules](docs/aoe.md) parse and pack AoE and its ATA and
+configuration commands the way dpkt 1.9.8 does, and Ethernet decodes them.
 The [Portmap, Rx, TNS, Yahoo Messenger, SMB and RFB modules](docs/small-apps.md)
 parse and pack those headers the way dpkt 1.9.8 does.
 The [NetBIOS module](docs/netbios.md) parses and packs the name, session and

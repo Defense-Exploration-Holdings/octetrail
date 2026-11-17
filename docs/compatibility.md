@@ -67,6 +67,8 @@ The [GRE and PIM modules](gre-pim.md) parse and pack those packets the way
 dpkt 1.9.8 does, with no declared differences.
 The [IGMP and VRRP modules](igmp-vrrp.md) parse and pack those messages the way
 dpkt 1.9.8 does, with no declared differences.
+The [ATA over Ethernet modules](aoe.md) parse and pack AoE and its commands the
+way dpkt 1.9.8 does, with no declared differences.
 The [Portmap, Rx, TNS, Yahoo Messenger, SMB and RFB modules](small-apps.md)
 parse and pack those headers the way dpkt 1.9.8 does, with no declared
 differences.

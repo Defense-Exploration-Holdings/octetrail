@@ -1,6 +1,9 @@
 """A dpkt rewrite with native offline capture and bounded packet composition."""
 
 from . import ah as ah
+from . import aoe as aoe
+from . import aoeata as aoeata
+from . import aoecfg as aoecfg
 from . import arp as arp
 from . import capture, ethernet, ip, pcap, pcapng
 from . import cdp as cdp
@@ -89,10 +92,12 @@ __all__.extend(("ah", "esp"))
 __all__.extend(("crc32c", "ospf", "sctp"))
 __all__.extend(("gre", "pim"))
 __all__.append("arp")
+__all__.extend(("aoe", "aoeata", "aoecfg"))
 __all__.extend(("loopback", "sll", "sll2"))
 
 __all__.extend(("Packet", "hexdump", "in_cksum", "in_cksum_add", "in_cksum_done", "packet"))
 
 # As in dpkt, the protocol tables are filled once every module is loaded.
 ip._mod_init()
+aoe._mod_init()
 ppp._mod_init()
