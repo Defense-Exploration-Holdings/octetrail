@@ -1,9 +1,11 @@
 """A dpkt rewrite with native offline capture and bounded packet composition."""
 
+from . import ah as ah
 from . import arp as arp
 from . import capture, ethernet, ip, pcap, pcapng
 from . import crc32c as crc32c
 from . import dns as dns
+from . import esp as esp
 from . import gre as gre
 from . import http as http
 from . import icmp as icmp
@@ -54,6 +56,7 @@ __all__.append("ssl")
 __all__.extend(("ipip", "ipx", "llc", "stp"))
 __all__.extend(("icmp", "icmp6"))
 __all__.extend(("igmp", "vrrp"))
+__all__.extend(("ah", "esp"))
 __all__.extend(("crc32c", "ospf", "sctp"))
 __all__.extend(("gre", "pim"))
 __all__.append("arp")
