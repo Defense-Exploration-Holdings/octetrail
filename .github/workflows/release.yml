@@ -359,6 +359,7 @@ jobs:
           import os
           import re
           import subprocess
+          import time
           from pathlib import Path
 
           def require(condition, code):
@@ -435,8 +436,14 @@ jobs:
               require(created.get("assets") == [], "new_draft_assets")
           owned_draft(created)
           release_id = created["id"]
-          matches = matching_releases()
-          require(len(matches) == 1 and matches[0].get("id") == release_id, "release_creation_race")
+          # The listing can lag a just-created draft; wait for it, but never accept a second release.
+          for attempt in range(12):
+              matches = matching_releases()
+              require(len(matches) <= 1 and all(m.get("id") == release_id for m in matches), "release_creation_race")
+              if matches:
+                  break
+              time.sleep(5)
+          require(len(matches) == 1, "release_listing_lag")
           def verified_assets(complete=False):
               pages = api(f"repos/{repo}/releases/{release_id}/assets?per_page=100", paginate=True)
               assets = [asset for page in pages for asset in page]

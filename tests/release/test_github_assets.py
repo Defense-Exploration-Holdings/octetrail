@@ -42,6 +42,7 @@ if endpoint==base+'/releases?per_page=100' and method=='GET':
         rows=[s['release']]
         if mode=='creation-race': rows.append({'id':9,'tag_name':tag,'draft':True})
         if mode=='foreign-author': rows=[dict(s['release'],author={'login':'another-user'})]
+        if mode=='listing-lag' and not s.get('lagged'): s['lagged']=True; rows=[]
     finish([rows])
 if endpoint==base+'/git/ref/tags/'+tag and method=='GET':
     if mode=='missing-tag': fail()
@@ -164,6 +165,15 @@ class GitHubAssetTests(unittest.TestCase):
             writes = [(method, endpoint) for method, endpoint in state["calls"] if method != "GET"]
             self.assertEqual([m for m, _ in writes], ["POST"] * (1 + len(ASSETS)) + ["PATCH"])
             self.assertTrue(writes[-1][1].endswith("/releases/7"))
+
+    def test_listing_that_lags_a_new_draft_is_retried(self):
+        result, state = self.model("listing-lag")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(state["published"])
+        listings = [
+            e for m, e in state["calls"] if m == "GET" and e.endswith("releases?per_page=100")
+        ]
+        self.assertEqual(len(listings), 3)
 
     def test_existing_draft_published_or_unreadable_listing_never_writes(self):
         for mode in ("existing-draft", "existing-published", "listing-error"):
