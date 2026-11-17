@@ -93,7 +93,7 @@ class IP:
         if decoder is not None and self.offset == 0:
             try:
                 decoded = decoder(data)
-            except (UnpackError, NotImplementedError):
+            except UnpackError:
                 pass
             else:
                 self.data = decoded

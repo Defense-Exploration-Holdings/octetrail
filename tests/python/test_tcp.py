@@ -137,21 +137,43 @@ class TCPTests(unittest.TestCase):
         self.assertNotIsInstance(caught.exception, NeedData)
         self.assertEqual(bytes(packet), literal())
 
-    def test_bounded_options_and_nonce_reserved_scope(self):
+    def test_options_reserved_and_nonce_bits_follow_dpkt(self):
         option_raw = literal()[:12] + b"\x60" + literal()[13:20] + b"\x01" * 4 + literal()[20:]
         self.assertEqual(bytes(tcp.TCP(option_raw)), option_raw)
         self.assertEqual(tcp.TCP(option_raw).opts, b"\x01" * 4)
-        for raw in (
-            literal()[:12] + b"\x51" + literal()[13:],
-            literal()[:12] + b"\x58" + literal()[13:],
-        ):
-            with self.subTest(raw=raw), self.assertRaises(NotImplementedError):
-                tcp.TCP(raw)
-        for fields in ({"off": 6}, {"opts": b"\x01" * 4}):
-            with self.subTest(fields=fields), self.assertRaises(PackError):
-                bytes(tcp.TCP(**fields))
+        short = tcp.TCP(option_raw[:22])
+        self.assertEqual((short.off, short.opts, short.data), (6, b"\x01\x01", b""))
+        self.assertEqual(bytes(short), option_raw[:22])
+        nonce = tcp.TCP(literal()[:12] + b"\x51" + literal()[13:])
+        self.assertEqual((nonce.flags, nonce._rsv), (0x118, 0))
+        self.assertEqual(tcp.tcp_flags_to_str(nonce.flags), "PUSH,ACK,NS")
+        reserved = tcp.TCP(literal()[:12] + b"\x5e" + literal()[13:])
+        self.assertEqual((reserved.off, reserved._rsv, reserved.flags), (5, 7, 0x18))
+        self.assertEqual(bytes(reserved)[12], 0x5E)
+        # Options are packed as assigned, whatever off says.
+        self.assertEqual(len(bytes(tcp.TCP(off=6))), 20)
+        self.assertEqual(
+            bytes(tcp.TCP(opts=b"\x01" * 3))[12:], b"\x50\x02" + bytes(tcp.TCP())[14:] + b"\x01" * 3
+        )
+        self.assertEqual(bytes(tcp.TCP(flags=0x100))[12:14], b"\x51\x00")
+        packet = tcp.TCP()
+        with self.assertRaises(ValueError):
+            packet.flags = 0x200
+        with self.assertRaises(ValueError):
+            packet.off = 16
+        packet._off_flags = 1 << 16
         with self.assertRaises(PackError):
-            bytes(tcp.TCP(flags=0x100))
+            bytes(packet)
+
+    def test_parse_opts_matches_dpkt_examples(self):
+        self.assertEqual(
+            tcp.parse_opts(b"\x02\x04\x23\x00\x01\x01\x04\x02"),
+            [(tcp.TCP_OPT_MSS, b"\x23\x00"), (1, b""), (1, b""), (tcp.TCP_OPT_SACKOK, b"")],
+        )
+        self.assertEqual(tcp.parse_opts(b"\x02\x00\x01"), [(2, b""), (1, b"")])
+        self.assertEqual(tcp.parse_opts(b"\xff"), [None])
+        self.assertEqual(tcp.parse_opts(b""), [])
+        self.assertEqual(tcp.tcp_flags_to_str(0x1FF), "FIN,SYN,RST,PUSH,ACK,URG,ECE,CWR,NS")
 
     def test_invalid_scalar_fields_fail_when_serialized(self):
         for name, bits in (

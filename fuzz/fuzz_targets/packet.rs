@@ -5,13 +5,18 @@ use octetrail::{ethernet, ipv4, ipv6, tcp, udp};
 
 fn transport(protocol: u8, data: &[u8]) {
     match protocol {
-        6 => {
-            let _ = tcp::Segment::parse(data, tcp::Limits::default());
-        }
+        6 => tcp_round_trip(data),
         17 => {
             let _ = udp::Datagram::parse(data, udp::Limits::default());
         }
         _ => {}
+    }
+}
+
+// A parsed segment always packs back to the exact input, as in dpkt.
+fn tcp_round_trip(data: &[u8]) {
+    if let Ok(segment) = tcp::Segment::parse(data, tcp::Limits::default()) {
+        assert_eq!(segment.to_bytes(tcp::Limits::default()).unwrap(), data);
     }
 }
 
@@ -30,6 +35,6 @@ fuzz_target!(|data: &[u8]| {
         network(frame.data);
     }
     network(data);
-    let _ = tcp::Segment::parse(data, tcp::Limits::default());
+    tcp_round_trip(data);
     let _ = udp::Datagram::parse(data, udp::Limits::default());
 });

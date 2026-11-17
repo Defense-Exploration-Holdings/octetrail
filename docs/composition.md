@@ -3,8 +3,8 @@
 The covered path is `ethernet.Ethernet` to `ip.IP` to `tcp.TCP` or `udp.UDP`.
 Parsing creates nested `.data` objects and the familiar `.ip`, `.tcp` or `.udp`
 aliases. Unknown Ethernet/IP protocols remain opaque bytes. Known children that
-raise `UnpackError`/`NeedData` or `NotImplementedError` also remain bytes; direct
-parsing still raises those errors. Resource, allocation and unexpected errors
+raise `UnpackError` or `NeedData` also remain bytes; direct parsing still raises
+those errors. Resource, allocation and unexpected errors
 are not swallowed. Payloads below TCP/UDP remain bytes with no application
 dispatch. ARP remains unsupported. The separate [DNS API](dns.md) must be called
 explicitly and does not change transport payloads. This API performs no network
@@ -57,17 +57,15 @@ OctetRail retain it. That difference is measured separately, not called parity.
 IP and TCP option bytes are opaque. Set `hl` or `off` to five plus the option
 length divided by four; the values are not inferred from option contents. IPv4
 packs and parses options as dpkt 1.9.8 does, including inconsistent or short
-layouts. TCP packing still requires exact layout agreement and complete aligned
-options of at most 40 bytes, and TCP parsing requires all declared header bytes;
-the dpkt references accept some of those layouts. Option-value parsing and
-convenience option APIs are absent.
+layouts, and so does TCP. `tcp.parse_opts` splits TCP option bytes like dpkt;
+IPv4 option-value parsing is absent.
 
 Noninitial IPv4 fragments stay bytes. An initial fragment can expose a transport
 header, matching the references, but MF suppresses automatic transport checksum
 updates. There is no reassembly. A nonzero IPv4 total length drops trailing
 bytes, so enclosing Ethernet padding is not treated as IP payload. Unknown Ethernet
-types retain every payload byte. VLAN, MPLS, 802.3, FCS and nonce/reserved TCP
-bits retain their prior exclusions. IPv4 offset-unit differences and the legacy `off` exclusion remain documented in the
+types retain every payload byte. VLAN, MPLS, 802.3 and FCS retain their prior
+exclusions. TCP nonce and reserved bits are kept as dpkt 1.9.8 keeps them. IPv4 offset-unit differences and the legacy `off` exclusion remain documented in the
 [IPv4 guide](ipv4.md).
 
 ## Bounds and verification

@@ -438,18 +438,19 @@ def validate(report, cases, module, version):
             )
     require(report["mutations"] == expected_mutations(version), "mutation fields/bytes")
     errors_wanted = dict.fromkeys(("short_tcp", "short_udp", "short_ethernet"), "NeedData")
+    # Options are packed as assigned and sliced from the bytes present, as in dpkt.
     errors_wanted.update(
         dict.fromkeys(
-            ("ip_options_mismatch", "tcp_options_mismatch"),
-            "PackError" if module == "octetrail" else "ok",
+            (
+                "ip_options_mismatch",
+                "tcp_options_mismatch",
+                "short_ip_options",
+                "short_tcp_options",
+            ),
+            "ok",
         )
     )
-    errors_wanted.update(
-        dict.fromkeys(
-            ("short_ip_options", "short_tcp_options"), "NeedData" if module == "octetrail" else "ok"
-        )
-    )
-    require(report["errors"] == errors_wanted, "declared errors/strict differences")
+    require(report["errors"] == errors_wanted, "declared errors")
 
 
 def main():
@@ -493,7 +494,7 @@ def main():
                 "operations_per_fixture": "parse, exact roundtrip; nested construction and byte-keyword dispatch for IPv4",
                 "mutation_cases": 4,
                 "version_difference_cases": 2,
-                "strict_error_differences": 4,
+                "options_packed_as_assigned": 4,
                 "shared_truncation_errors": 3,
                 "installed_providers": len(args.python),
                 "oracle_versions": ["1.9.6", "1.9.8"],

@@ -1,4 +1,4 @@
-"""Independent benign TCP base-header fixtures; no packet encoder is imported."""
+"""Independent benign TCP fixtures; no packet encoder is imported."""
 
 import struct
 from pathlib import Path
@@ -16,16 +16,15 @@ def literal():
     return bytes.fromhex((ROOT / "tests/fixtures/tcp-base.hex").read_text())
 
 
-def encode(values, data=b"", opts=b""):
+def encode(values, data=b"", opts=b"", reserved=0):
     return (
         struct.pack(
-            "!HHIIBBHHH",
+            "!HHIIHHHH",
             values["sport"],
             values["dport"],
             values["seq"],
             values["ack"],
-            values["off"] << 4,
-            values["flags"],
+            values["off"] << 12 | reserved << 9 | values["flags"],
             values["win"],
             values["sum"],
             values["urp"],
@@ -144,13 +143,6 @@ def cases():
             {"outcome": "error", "phase": "construct", "error": "NeedData"},
             hex=raw[:length].hex(),
         )
-    invalid = raw[:12] + b"\x40" + raw[13:]
-    add(
-        "invalid_data_offset",
-        "parse",
-        {"outcome": "error", "phase": "construct", "error": "UnpackError"},
-        hex=invalid.hex(),
-    )
     for field, bits in WIDTHS.items():
         for value in (-1, 1 << bits, 1.5):
             for operation in ("construct", "mutate"):
@@ -170,31 +162,89 @@ def cases():
                     **options,
                 )
 
-    # Measured exclusions: ordinary option bytes and version-dependent flags.
+    for words in range(5):
+        wire = raw[:12] + bytes((words << 4, raw[13])) + raw[14:]
+        add(
+            f"data_offset_below_five.{words}",
+            "parse",
+            {"outcome": "error", "phase": "construct", "error": "UnpackError"},
+            hex=wire.hex(),
+        )
+
+    # Options are the bytes up to the offset that are present; nothing is checked.
     opts = b"\x01" * 4
     option_values = {**BASE, "off": 6}
     option_raw = encode(option_values, data, opts)
-    unsupported = {"outcome": "error", "phase": "construct", "error": "NotImplementedError"}
     add(
         "opaque_options",
         "parse",
         success(option_values, option_raw, data, opts),
         hex=option_raw.hex(),
     )
-    for name, bit in (("nonce", 1), ("reserved", 8)):
-        wire = raw[:12] + bytes((0x50 | bit,)) + raw[13:]
-        newer = {**BASE, "flags": BASE["flags"] | (0x100 if bit == 1 else 0)}
+    long_opts = bytes(range(1, 41))
+    long_values = {**BASE, "off": 15}
+    long_raw = encode(long_values, data, long_opts)
+    add(
+        "largest_offset",
+        "parse",
+        success(long_values, long_raw, data, long_opts),
+        hex=long_raw.hex(),
+    )
+    short_values = {**BASE, "off": 8}
+    for present in range(13):
+        wire = encode(short_values, b"", long_opts[:present])
         add(
-            "excluded_" + name,
+            f"short_options.{present}",
             "parse",
-            None,
+            success(short_values, wire, b"", long_opts[:present]),
             hex=wire.hex(),
-            status="difference",
-            reason="Nonce/reserved bits are outside the shared eight-flag API; nonce is exposed differently by the references.",
-            expected_versions={
-                "1.9.6": success(BASE, wire, data),
-                "1.9.8": success(newer, wire, data),
-                "octetrail": unsupported,
-            },
         )
+    for name, values, given in (
+        ("unmatched_options", BASE, opts),
+        ("missing_options", option_values, b""),
+        ("odd_options", BASE, b"\x01\x01\x01"),
+    ):
+        wire = encode(values, data, given)
+        add(
+            "pack." + name,
+            "construct",
+            success(values, wire, data, given),
+            fields={**values, "opts": given.hex(), "data": data.hex()},
+        )
+
+    # The nonce bit is the ninth flag in dpkt 1.9.8 and part of the offset byte in 1.9.6.
+    # OctetRail follows 1.9.8.
+    def newer_only(name, expected_198, expected_196, **options):
+        add(
+            name,
+            options.pop("operation", "parse"),
+            None,
+            status="difference",
+            reason="dpkt 1.9.8 exposes nine flags and the reserved bits separately; "
+            "1.9.6 keeps them in one offset byte. OctetRail follows 1.9.8.",
+            expected_versions={
+                "1.9.6": expected_196,
+                "1.9.8": expected_198,
+                "octetrail": expected_198,
+            },
+            **options,
+        )
+
+    for name, bits in (("nonce", 1), ("reserved.1", 2), ("reserved.4", 8), ("all", 0x0F)):
+        wire = raw[:12] + bytes((0x50 | bits,)) + raw[13:]
+        newer = {**BASE, "flags": BASE["flags"] | (0x100 if bits & 1 else 0)}
+        newer_only(
+            "header_bits." + name,
+            success(newer, wire, data),
+            success(BASE, wire, data),
+            hex=wire.hex(),
+        )
+    nine = {**DEFAULTS, "flags": 0x1FF}
+    newer_only(
+        "nine_bit_flags.construct",
+        success(nine, encode(nine)),
+        {"outcome": "error", "phase": "serialize", "error": "PackError"},
+        operation="construct",
+        fields={"flags": 0x1FF},
+    )
     return result
