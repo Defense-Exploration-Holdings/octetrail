@@ -1,8 +1,10 @@
-# IPv4 datagrams and bounded transport composition
+# IPv4
 
-`octetrail.ip.IP` parses IPv4 headers with up to 40 opaque option bytes and
-dispatches TCP/UDP when fragment offset is zero. Unknown or undecodable payloads
-remain bytes. Fragment reassembly is not implemented. The native Rust API is `octetrail::ipv4::{Header, Packet, checksum}`.
+`octetrail.ip` parses and packs IPv4 datagrams the way dpkt 1.9.8 does. The
+option and payload bounds and the header, TCP and UDP checksums are computed in
+Rust. `IP` is a [`Packet`](packet.md) subclass, as in dpkt, and the module has
+dpkt's `IP_*` constants. The native Rust API is
+`octetrail::ipv4::{Header, Packet, checksum, transport_checksum, pseudo_checksum}`.
 
 ```python
 from octetrail import ip
@@ -13,88 +15,78 @@ raw = bytes(packet)
 assert ip.IP(raw).data == packet.data
 ```
 
-The addresses are documentation examples. This API performs no collection or
-network operation. Packet construction accepts field keywords, or one positional
-bytes buffer. Positional parsing ignores keyword fields as dpkt does. Unknown
-constructor fields and extra positional arguments are unsupported.
+The addresses are documentation examples.
 
-## Fields and checksum state
+## Fields
 
-The covered mutable fields are `v`, `hl`, `tos`, `len`, `id`, `ttl`, `p`, `sum`,
-`src`, `dst`, `data`, and the named `rf`, `df`, `mf`, `offset` bit fields.
-`opts` is opaque bytes. Set `hl` to five plus the option length divided by four;
-neither is inferred from the other, and packing writes both as assigned, as dpkt
-does. Defaults are version 4, header length 5, TTL 64,
-zero addresses, empty payload and zero checksum. Constructor length defaults to
-20 plus options and payload length unless explicitly supplied. `len(packet)` reports the
-actual header-plus-payload length, independently of the stored `packet.len`.
+`IP` has `v`, `hl`, `tos`, `len`, `id`, `rf`, `df`, `mf`, `offset`, `ttl`, `p`,
+`sum`, `src`, `dst`, `opts` and `data`. `v` and `hl` are bit fields of `_v_hl`,
+and `rf`, `df`, `mf` and `offset` of `_flags_offset`. `offset` is in eight-byte
+units, as in 1.9.8. `off` reads `_flags_offset` and sets `offset`, and warns
+that it is deprecated, as in dpkt. A new packet has version 4, header length 5,
+TTL 64, zero addresses and a `len` of 20 plus its options and payload, unless
+`len` is given.
 
-Serialization follows dpkt 1.9.8: when `sum == 0`, the native serializer updates
-`len` and computes the header's Internet checksum. It mutates those two fields
-after successful serialization. If `sum` is nonzero, it preserves both assigned
-fields, including after a payload mutation. Set `sum = 0` to refresh them.
-`pack_hdr()` emits only the assigned fixed header and does not calculate a sum.
-Incoming checksums are preserved, not validated. During a zero-IP-sum update,
-zero TCP/UDP sums are computed with the IPv4 pseudoheader for nonfragments.
-See [composition](composition.md) for precise update and mutation semantics.
+## Parsing
 
-dpkt 1.9.6 differs: it rewrites length on every serialization, even with a nonzero
-checksum. Its `offset` getter/setter also uses byte units; this API follows
-1.9.8's eight-octet units. Those are separate version differences, not equivalent
-observations. The deprecated `off` alias is unsupported; use named flags/offset.
-For example, assigning `offset = 24` stores wire offset 24 here and in 1.9.8,
-but wire offset 3 in 1.9.6. Mutating the offset retains the other flag bits;
-reset `sum` when the header checksum needs refreshing.
+1. The 20-byte header is read. A shorter buffer raises `NeedData`. Any version
+   is accepted. A header length below five words raises `UnpackError`.
+2. `opts` is the bytes from offset 20 to the header length, cut to the bytes
+   present. The payload runs from there to `len`, also cut to the bytes
+   present. A `len` inside the header gives an empty payload, and a `len` of 0,
+   as seen with segmentation offload, keeps the rest of the buffer. Bytes after
+   `len`, such as Ethernet padding, are dropped.
+3. When `offset` is 0, the payload is decoded with `IP.get_proto(p)` and also
+   set as an attribute named after its class, such as `tcp`, `udp`, `ip` or
+   `ip6`. A later fragment stays bytes, and dpkt's quirk of setting it as
+   `bytes` too is kept. A protocol without a class, and a payload class that
+   raises `UnpackError`, `NeedData` or `KeyError`, leave the bytes, as in dpkt.
+   Other errors propagate.
 
-Parsing slices the datagram as dpkt 1.9.8 does. Bytes beyond a nonzero total
-length are dropped, so Ethernet padding is not payload. A zero total length (as
-seen with segmentation offload) keeps the rest of the buffer. Options and payload
-cut off by the buffer are kept as found, and a total length inside the header
-gives an empty payload. Any version nibble is accepted. It never reassembles
-fragments. Rust borrows option/payload slices;
-the Python facade returns TCP/UDP objects where supported, otherwise owned bytes. With
-`sum == 0`, serialized packets are limited to 65535 bytes, because the length field
-is computed; with an explicit checksum the fields are packed as assigned. Temporary native output, Python output and retained input
-are separate memory costs; this is not a process-memory or wall-clock limit.
+The slices keep the type of the buffer, so a `bytearray` gives `bytearray`
+options and payload.
 
-## Errors and exclusions
+One difference from dpkt 1.9.8 is declared. When an IPv6 payload has next
+header 44 after an extension header that is not a fragment header, dpkt raises
+`AttributeError` out of `IP`. OctetRail raises
+[`FragmentOffsetError`](ipv6.md#errors) for the payload, which is an
+`UnpackError`, so `IP` keeps it as bytes.
 
-Incomplete fixed headers raise `NeedData`. An IHL below five raises `UnpackError`.
-Nothing else is rejected on parsing. Packing writes the header, options and
-payload as assigned, whatever `hl` says. Unsupported field widths/types raise
-`PackError` during packing, as does a zero-checksum datagram over 65535 bytes;
-full error messages and failed-object mutation timing are not claimed compatible.
+## The protocol table
 
-Within Ethernet, an IPv4 payload that raises `UnpackError` or `NeedData` stays
-bytes. Generic value/type errors and resource failures are not swallowed by nested
-decoding.
+`IP.set_proto(p, cls)` and `IP.get_proto(p)` edit and read the table. As in
+dpkt, `IP6` shares it, and it is filled from the `IP_PROTO_*` names: each one
+maps to the class of the same name in the OctetRail module of that name when it
+exists. Today that is `IP` (0 and 4, through `octetrail.ipip`), `ICMP`,
+`IGMP`, `TCP`, `UDP`, `IP6`, `ICMP6`, `VRRP` and, as in dpkt, the Spanning
+Tree `STP` class for 118. GRE, ESP, AH, OSPF, PIM and SCTP stay bytes until
+those modules exist. `get_ip_proto_name(p)` returns the name of a protocol number, or
+`None`.
 
-Parsing and serialization cover bytes payloads, ordinary unsigned numeric fields
-and byte-string addresses. Generic Packet methods, arbitrary numeric or buffer
-types, subclass customization, registries, full constants remain outside the supported surface. Address packing uses fixed-width
-four-byte strings, including padding/truncation. No full IPv4 or dpkt parity,
-application compatibility or performance claim is made.
+## Packing
 
-## Reproduce offline verification
+Packing follows dpkt 1.9.8. When `sum` is 0, `len` is set to `len(packet)` and
+`sum` to the checksum of the header and options. In that same step, a zero TCP
+or UDP checksum is computed with the IPv4 pseudo-header when `p` is 6 or 17,
+the datagram is not a fragment (MF and `offset` are 0) and the payload is a
+layer object. A UDP checksum that computes to zero is sent as `0xffff`. A
+nonzero `sum` keeps `len` and `sum` as they are, even after a change. Set `sum`
+to 0 to refresh them. The header, `opts` and `data` are packed as assigned,
+whatever `hl` says. Incoming checksums are kept, not validated.
 
-Use the [wheel build guide](python-reader.md#build-locally) and separate pinned
-reference environments from the [README](../README.md). Install only into a
-fresh test environment, then run:
+`pack_hdr()` packs the fixed header only. A field that does not fit its format
+raises `PackError`, so a zero-checksum datagram over 65535 bytes raises it too.
+dpkt 1.9.6 differs: it rewrites `len` on every packing and uses byte units for
+`offset`.
+
+## Verification
+
+`tools/ipv4_differential.py` parses 43 datagrams, including dpkt's IPv4 test
+vectors, and builds, changes and repacks datagrams from keywords. OctetRail must
+equal dpkt 1.9.8 on every observation except the declared one. TCP and UDP payloads are compared by
+bytes, not by repr, until those modules are `Packet` subclasses too.
 
 ```sh
-cargo test --locked --workspace
-NEW_ENV/bin/python -I -m unittest discover -s tests/python -p 'test_ipv4*.py'
-python3 tools/ipv4_differential.py --oracle-196 ORACLE196/bin/python --oracle-198 ORACLE198/bin/python --python NEW_ENV/bin/python
+python3 tools/ipv4_differential.py --oracle-196 /tmp/oracle-196/bin/python \
+  --oracle-198 /tmp/oracle-198/bin/python --python /tmp/octetrail-wheel/bin/python
 ```
-
-The driver reports equal cases, measured version differences and explicit strict
-or unsupported cases separately. It compares fields before/after serialization,
-exact wire bytes, lengths, and declared exception family/phase. The inputs use
-an independently assembled literal, struct fields and a separate word-sum checksum;
-neither packet library generates them. Passing the declared cases does not
-establish broader input compatibility.
-
-Provider isolation, installed version and origin checks, and result validation
-use explicit failures that remain active with Python `-O`. The harness regression
-tests exercise optimized mode with incorrect versions, origins, coverage and
-results. A failed verification produces no successful provider report.

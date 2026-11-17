@@ -11,7 +11,7 @@ explicitly and does not change transport payloads. This API performs no network
 operation.
 
 The separate [IPv6 guide](ipv6.md) covers EtherType `0x86dd`, the extension
-headers and their fragment rule. The IPv4 rules below remain unchanged.
+headers and their fragment rule. The [IPv4 guide](ipv4.md) covers IPv4 itself.
 
 IPv4 parsing follows dpkt 1.9.8: a declared length below the header, a zero
 length or a datagram cut off by the capture is sliced from the bytes present, so
@@ -64,19 +64,19 @@ header, matching the references, but MF suppresses automatic transport checksum
 updates. There is no reassembly. A nonzero IPv4 total length drops trailing
 bytes, so enclosing Ethernet padding is not treated as IP payload. Unknown Ethernet
 types retain every payload byte. VLAN, MPLS, ISL, 802.3 LLC and FCS handling is
-described in the [Ethernet guide](ethernet.md). TCP nonce and reserved bits are kept as dpkt 1.9.8 keeps them. IPv4 offset-unit differences and the legacy `off` exclusion remain documented in the
+described in the [Ethernet guide](ethernet.md). TCP nonce and reserved bits are kept as dpkt 1.9.8 keeps them. IPv4 offset units and the `off` alias are described in the
 [IPv4 guide](ipv4.md).
 
 ## Bounds and verification
 
-Ethernet frames are not bounded, as in dpkt. IPv4 datagrams are bounded to
-65535 bytes, standalone TCP segments to 16 MiB and UDP buffers to 65535 bytes. Header options are checked
+Ethernet frames are not bounded, as in dpkt. A zero-checksum IPv4 datagram is
+bounded to 65535 bytes by its length field, standalone TCP segments to 16 MiB and UDP buffers to 65535 bytes. Header options are checked
 before native output allocation. Native views borrow input; Python objects own
 their bytes. Rust `ipv4::Packet` and `tcp::Segment` now include borrowed `opts`
-fields; base-header struct literals must supply `opts: &[]`. Dispatch has two
-fixed layers, and IPv4 and TCP serialization accept only the declared child
-classes, so packet-object cycles there raise `TypeError`. Ethernet packs its
-payload as dpkt does, so a cycle raises `RecursionError`. These
+fields; base-header struct literals must supply `opts: &[]`. TCP serialization
+accepts only the declared child classes, so a packet-object cycle there raises
+`TypeError`. IPv4 and Ethernet pack their payload as dpkt does, so a cycle
+raises `RecursionError`. These
 limits are not process-memory or wall-clock limits.
 
 The [independent fixture tool](../tools/composition_differential.py) constructs

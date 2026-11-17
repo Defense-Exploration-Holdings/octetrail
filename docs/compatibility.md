@@ -50,6 +50,9 @@ compressed names the way dpkt 1.9.8 does. It does not add transport dispatch.
 The [HTTP module](http.md) parses and packs HTTP/1.x requests and responses,
 including chunked bodies, the way dpkt 1.9.8 does. No automatic application
 dispatch is added.
+The [IPv4 module](ipv4.md) parses and packs IPv4 datagrams, their options and
+checksums, and the shared protocol table the way dpkt 1.9.8 does, except one
+declared difference for an IPv6 payload.
 The [Packet base class](packet.md) follows dpkt 1.9.8, including bit fields,
 `repr()`, `pprint()` and the checksum helpers.
 The [Ethernet module](ethernet.md) parses and packs Ethernet II, IEEE 802.3 LLC,

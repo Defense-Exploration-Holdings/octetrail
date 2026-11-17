@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+IPv4 now parses and packs the way dpkt 1.9.8 does:
+
+- API: `IP` is a `Packet` subclass with dpkt's `repr()`, `pprint()`, `dict()`,
+  bit fields and `IP_*` constants. `off` works and warns that it is deprecated,
+  as in dpkt. Unknown constructor keywords become attributes instead of
+  raising `TypeError`.
+- Protocol table: `IP.set_proto`, `IP.get_proto` and `get_ip_proto_name` are
+  added. The table is filled from the `IP_PROTO_*` names and shared with
+  `IP6`, as in dpkt. The new `octetrail.ipip` module decodes protocol 4.
+- Parsing: a payload class that raises `KeyError` leaves the bytes, as in dpkt,
+  and the options and payload keep the type of the buffer.
+- Packing: a packet-object cycle raises `RecursionError`, as in dpkt, instead
+  of `TypeError`.
+
 ICMP and ICMPv6 now parse and pack the way dpkt 1.9.8 does:
 
 - New modules: `octetrail.icmp` with `ICMP` and its message classes, and

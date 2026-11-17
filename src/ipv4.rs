@@ -210,10 +210,17 @@ pub fn transport_checksum(
     pseudo[4..8].copy_from_slice(&dst);
     pseudo[9] = protocol;
     pseudo[10..].copy_from_slice(&length.to_be_bytes());
-    let sum = finish_checksum(u32::from(!checksum(&pseudo)) + u32::from(!checksum(data)));
-    Ok(if protocol == 17 && sum == 0 {
+    Ok(pseudo_checksum(&pseudo, data))
+}
+
+/// Checksum over an already packed 12-byte pseudoheader and the transport bytes,
+/// as dpkt 1.9.8 computes it. A UDP result of zero (protocol 17 in byte 9) is sent
+/// as all ones.
+pub fn pseudo_checksum(pseudo: &[u8; 12], data: &[u8]) -> u16 {
+    let sum = finish_checksum(u32::from(!checksum(pseudo)) + u32::from(!checksum(data)));
+    if pseudo[9] == 17 && sum == 0 {
         u16::MAX
     } else {
         sum
-    })
+    }
 }
