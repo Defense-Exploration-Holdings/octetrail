@@ -50,6 +50,8 @@ retained upstream BSD license.
 
 The IGMP and VRRP facades adapt dpkt's igmp.py and vrrp.py under the same
 retained upstream BSD license.
+The NetBIOS module adapts dpkt's netbios.py, including its constants and
+service table, under the same retained upstream BSD license.
 The RADIUS, RTP, STUN and TPKT modules adapt dpkt's radius.py, rtp.py, stun.py
 and tpkt.py, including their constants, under the same retained upstream BSD
 The NTP, RIP, TFTP and HSRP modules adapt dpkt's ntp.py, rip.py, tftp.py and
