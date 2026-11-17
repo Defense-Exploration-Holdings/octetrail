@@ -40,6 +40,8 @@ The [ICMP and ICMPv6 modules](docs/icmp.md) parse and pack those messages the wa
 dpkt 1.9.8 does, and IPv6 decodes them.
 The [IGMP and VRRP modules](docs/igmp-vrrp.md) parse and pack those messages the
 way dpkt 1.9.8 does, and IPv6 decodes them.
+The [ARP module](docs/arp.md) parses and packs ARP the way dpkt 1.9.8 does, and
+Ethernet decodes it.
 The [SSL and TLS module](docs/tls.md) parses and packs records, handshakes,
 hellos and certificate lists the way dpkt 1.9.8 does, with dpkt's cipher suite table.
 

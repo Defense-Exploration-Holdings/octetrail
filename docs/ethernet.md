@@ -50,8 +50,8 @@ not walk tag or label stacks.
 `Ethernet.set_type(type, cls)`, `get_type(type)` and `get_type_rev(cls)` edit
 and read the table. As in dpkt, it is filled from the `ETH_TYPE_*` names: each
 one maps to the class of the same name in the OctetRail module of that name
-when it exists. Today that is `IP`, `IP6` and `IPX`, plus `Ethernet` for
-transparent bridging (0x6558). ARP, CDP, DTP, LLDP, PPP, PPPoE and the other
+when it exists. Today that is `IP`, `IP6`, `IPX` and `ARP`, plus `Ethernet` for
+transparent bridging (0x6558). CDP, DTP, LLDP, PPP, PPPoE and the other
 types dpkt decodes stay bytes until those modules exist.
 
 ## LLC, STP and IPX

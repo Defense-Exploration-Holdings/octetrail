@@ -63,6 +63,8 @@ The [ICMP and ICMPv6 modules](icmp.md) parse and pack those messages the way
 dpkt 1.9.8 does, except one declared difference for an ICMPv6 quote.
 The [IGMP and VRRP modules](igmp-vrrp.md) parse and pack those messages the way
 dpkt 1.9.8 does, with no declared differences.
+The [ARP module](arp.md) parses and packs ARP the way dpkt 1.9.8 does, with no
+declared differences.
 The [SSL and TLS module](tls.md) parses and packs records, handshakes, hellos,
 certificate lists and SSLv2 records the way dpkt 1.9.8 does. Two errors are
 also `UnpackError` subclasses where dpkt raises other classes.

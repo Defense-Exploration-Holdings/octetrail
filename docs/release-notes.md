@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+ARP now parses and packs the way dpkt 1.9.8 does: the new `octetrail.arp`
+module has `ARP` and dpkt's constants, and Ethernet decodes type 0x0806 as ARP.
+
 TCP and UDP now parse and pack the way dpkt 1.9.8 does:
 
 - API: `TCP` and `UDP` are `Packet` subclasses with dpkt's `repr()`,
