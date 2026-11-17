@@ -1,4 +1,4 @@
-use octetrail::tcp::{Error, Header, Limits, Segment, HEADER_LEN};
+use octetrail::tcp::{parse_options, Error, Header, Limits, Segment, HEADER_LEN};
 
 // Independently assembled offline fields and the opaque ASCII payload "rail".
 const LITERAL: &[u8] = &[
@@ -13,8 +13,9 @@ fn literal_fields_and_borrowed_payload_are_exact() {
     assert_eq!(segment.header.dport, 80);
     assert_eq!(segment.header.seq, 0x89abcdef);
     assert_eq!(segment.header.ack, 0x87654321);
-    assert_eq!(segment.header.off, 5);
-    assert_eq!(segment.header.flags, 0x10);
+    assert_eq!(segment.header.off(), 5);
+    assert_eq!(segment.header.reserved(), 0);
+    assert_eq!(segment.header.flags(), 0x10);
     assert_eq!(segment.header.win, 4096);
     assert_eq!(segment.header.checksum, 0x1234);
     assert_eq!(segment.header.urp, 0);
@@ -26,7 +27,7 @@ fn literal_fields_and_borrowed_payload_are_exact() {
 #[test]
 fn defaults_match_explicit_reference_bytes() {
     assert_eq!(
-        Header::default().to_bytes().unwrap(),
+        Header::default().to_bytes(),
         [0xde, 0xad, 0, 0, 0xde, 0xad, 0xbe, 0xef, 0, 0, 0, 0, 0x50, 2, 0xff, 0xff, 0, 0, 0, 0]
     );
 }
@@ -38,8 +39,7 @@ fn unsigned_fields_and_network_order_cover_high_bits() {
         dport: 0x8000,
         seq: 0xffffffff,
         ack: 0x80000000,
-        off: 5,
-        flags: 0x80,
+        off_flags: 0x5080,
         win: 0x8000,
         checksum: 0xffff,
         urp: 0xffff,
@@ -48,13 +48,13 @@ fn unsigned_fields_and_network_order_cover_high_bits() {
         0xff, 0xff, 0x80, 0, 0xff, 0xff, 0xff, 0xff, 0x80, 0, 0, 0, 0x50, 0x80, 0x80, 0, 0xff,
         0xff, 0xff, 0xff,
     ];
-    assert_eq!(header.to_bytes().unwrap(), raw);
+    assert_eq!(header.to_bytes(), raw);
     assert_eq!(Header::parse(&raw).unwrap(), header);
 }
 
 #[test]
 fn empty_payload_needs_exactly_twenty_bytes() {
-    let raw = Header::default().to_bytes().unwrap();
+    let raw = Header::default().to_bytes();
     let segment = Segment::parse(&raw, Limits::default()).unwrap();
     assert!(segment.data.is_empty());
     assert_eq!(segment.to_bytes(Limits::default()).unwrap().len(), 20);
@@ -83,7 +83,7 @@ fn offsets_below_five_are_invalid() {
 }
 
 #[test]
-fn options_are_borrowed_and_length_checked() {
+fn options_are_borrowed_and_sliced_from_the_bytes_present() {
     let mut raw = LITERAL.to_vec();
     raw[12] = 6 << 4;
     raw.splice(20..20, [1, 1, 1, 1]);
@@ -91,31 +91,66 @@ fn options_are_borrowed_and_length_checked() {
     assert_eq!(segment.opts, &[1, 1, 1, 1]);
     assert_eq!(segment.opts.as_ptr(), raw[20..].as_ptr());
     assert_eq!(segment.to_bytes(Limits::default()).unwrap(), raw);
-    assert!(matches!(
-        Segment::parse(&raw[..23], Limits::default()),
-        Err(Error::TruncatedOptions { required: 24, .. })
-    ));
-    let short = Segment {
-        header: segment.header,
-        opts: &[],
-        data: &[],
-    };
-    assert_eq!(
-        short.to_bytes(Limits::default()).unwrap_err(),
-        Error::InvalidOptionsLength
-    );
+    // A buffer shorter than the offset gives short options and no data, as in dpkt.
+    let short = Segment::parse(&raw[..23], Limits::default()).unwrap();
+    assert_eq!(short.opts, &[1, 1, 1]);
+    assert!(short.data.is_empty());
+    assert_eq!(short.to_bytes(Limits::default()).unwrap(), &raw[..23]);
+    let mut largest = raw[..20].to_vec();
+    largest[12] = 0xf0;
+    let segment = Segment::parse(&largest, Limits::default()).unwrap();
+    assert!(segment.opts.is_empty() && segment.data.is_empty());
 }
 
 #[test]
-fn nonce_and_reserved_bits_are_explicitly_unsupported() {
-    for bits in [1, 2, 4, 8] {
+fn options_need_not_match_the_offset_when_packing() {
+    let segment = Segment {
+        header: Header::default(),
+        opts: &[1, 1, 1],
+        data: b"x",
+    };
+    let raw = segment.to_bytes(Limits::default()).unwrap();
+    assert_eq!(raw[12], 0x50);
+    assert_eq!(&raw[20..], &[1, 1, 1, b'x']);
+}
+
+#[test]
+fn reserved_and_nonce_bits_are_kept() {
+    for bits in [1u8, 2, 4, 8, 0x0f] {
         let mut raw = LITERAL.to_vec();
         raw[12] |= bits;
-        assert_eq!(
-            Segment::parse(&raw, Limits::default()).unwrap_err(),
-            Error::ReservedBitsUnsupported { bits }
-        );
+        let segment = Segment::parse(&raw, Limits::default()).unwrap();
+        assert_eq!(segment.header.off(), 5);
+        assert_eq!(segment.header.reserved(), bits >> 1);
+        assert_eq!(segment.header.flags(), 0x10 | (u16::from(bits & 1) << 8));
+        assert_eq!(segment.to_bytes(Limits::default()).unwrap(), raw);
     }
+}
+
+#[test]
+fn option_lists_split_like_dpkt() {
+    let mss_nop_sack = [2, 4, 0x23, 0, 1, 1, 4, 2];
+    assert_eq!(
+        parse_options(&mss_nop_sack),
+        [
+            Some((2, &[0x23, 0][..])),
+            Some((1, &[][..])),
+            Some((1, &[][..])),
+            Some((4, &[][..])),
+        ]
+    );
+    // A zero length counts as two; a length past the end takes what is left.
+    assert_eq!(
+        parse_options(&[2, 0, 1]),
+        [Some((2, &[][..])), Some((1, &[][..]))]
+    );
+    assert_eq!(parse_options(&[8, 10, 1, 2]), [Some((8, &[1, 2][..]))]);
+    assert_eq!(parse_options(&[0xff]), [None]);
+    assert_eq!(
+        parse_options(&[1, 0, 3]),
+        [Some((1, &[][..])), Some((0, &[][..])), None]
+    );
+    assert!(parse_options(&[]).is_empty());
 }
 
 #[test]
@@ -164,7 +199,7 @@ fn mutation_replaces_fields_and_preserves_the_original_input() {
     let mut segment = Segment::parse(LITERAL, Limits::default()).unwrap();
     segment.header.sport = 0x8000;
     segment.header.seq = 0xffffffff;
-    segment.header.flags = 0x18;
+    segment.header.off_flags = 0x5018;
     segment.data = b"new";
     let raw = segment.to_bytes(Limits::default()).unwrap();
     assert_eq!(&raw[..2], &[0x80, 0]);

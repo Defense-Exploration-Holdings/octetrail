@@ -11,7 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import octetrail
-from octetrail import PackError, ethernet, ip, pcap, pcapng, tcp, udp
+from octetrail import ethernet, ip, pcap, pcapng, tcp, udp
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location(
@@ -90,11 +90,10 @@ class CompositionTests(unittest.TestCase):
                 self.assertIs(raised.exception, error)
                 unpack.assert_called_once_with(bytes(20))
 
-    def test_options_must_fit_layout_and_unsupported_object_cycles_fail(self):
-        # dpkt packs IPv4 options as assigned, whatever hl says.
+    def test_options_pack_as_assigned_and_object_cycles_fail(self):
+        # dpkt packs IPv4 and TCP options as assigned, whatever hl or off says.
         self.assertEqual(len(bytes(ip.IP(hl=15, opts=b"\x01" * 44))), 64)
-        with self.assertRaises(PackError):
-            bytes(tcp.TCP(off=15, opts=b"\x01" * 44))
+        self.assertEqual(len(bytes(tcp.TCP(off=15, opts=b"\x01" * 44))), 64)
         for packet in (ethernet.Ethernet(), ip.IP(), tcp.TCP()):
             packet.data = packet
             with self.assertRaises(TypeError):
