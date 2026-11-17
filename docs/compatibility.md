@@ -51,6 +51,8 @@ compressed names the way dpkt 1.9.8 does. It does not add transport dispatch.
 The [HTTP module](http.md) parses and packs HTTP/1.x requests and responses,
 including chunked bodies, the way dpkt 1.9.8 does. No automatic application
 dispatch is added.
+The [Packet base class](packet.md) follows dpkt 1.9.8, including bit fields,
+`repr()`, `pprint()` and the checksum helpers.
 The [passive TLS subset](tls.md) adds bounded record framing and explicit
 ServerHello metadata, with opaque fallback for other handshake kinds. Its
 record-type dispatch inventory is deliberately partial.

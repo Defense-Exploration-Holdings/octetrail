@@ -39,3 +39,6 @@ retained BSD attribution. Native framing and synthetic fixtures are original wor
 The TLS reference module also credits: Portion Copyright 2012 Google Inc.
 All rights reserved. Its API conventions use the same retained BSD attribution.
 Native framing, resource bounds and synthetic fixtures are original work.
+
+The Packet base class, hexdump and checksum helpers adapt dpkt's dpkt.py
+under the same retained upstream BSD license.
