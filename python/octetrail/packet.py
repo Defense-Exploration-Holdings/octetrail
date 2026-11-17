@@ -9,7 +9,6 @@ import struct
 from functools import partial
 from itertools import chain
 
-from . import tcp, udp
 from .errors import Error, NeedData, PackError, UnpackError
 
 __all__ = [
@@ -300,6 +299,5 @@ def in_cksum(buf):
     return in_cksum_done(in_cksum_add(0, buf))
 
 
-# Layers that layer lookup walks through. TCP and UDP are not Packet
-# subclasses yet, but dpkt finds them, so they are walked as well.
-_LAYERS = (Packet, tcp.TCP, udp.UDP)
+# Layers that layer lookup walks through.
+_LAYERS = (Packet,)

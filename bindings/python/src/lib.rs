@@ -462,10 +462,8 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
         module.py().get_type::<PacketLimitError>(),
     )?;
     tcp::register(module)?;
-    udp::register(module)?;
     Ok(())
 }
 
 mod tcp;
-mod udp;
 mod vrrp;

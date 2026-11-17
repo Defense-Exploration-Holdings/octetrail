@@ -70,13 +70,13 @@ described in the [Ethernet guide](ethernet.md). TCP nonce and reserved bits are 
 ## Bounds and verification
 
 Ethernet frames are not bounded, as in dpkt. A zero-checksum IPv4 datagram is
-bounded to 65535 bytes by its length field, standalone TCP segments to 16 MiB and UDP buffers to 65535 bytes. Header options are checked
+bounded to 65535 bytes by its length field, while TCP segments and UDP datagrams
+are not bounded, as in dpkt. Header options are checked
 before native output allocation. Native views borrow input; Python objects own
 their bytes. Rust `ipv4::Packet` and `tcp::Segment` now include borrowed `opts`
-fields; base-header struct literals must supply `opts: &[]`. TCP serialization
-accepts only the declared child classes, so a packet-object cycle there raises
-`TypeError`. IPv4 and Ethernet pack their payload as dpkt does, so a cycle
-raises `RecursionError`. These
+fields; base-header struct literals must supply `opts: &[]`. Ethernet, IPv4, TCP
+and UDP pack their payload as dpkt does, so a packet-object cycle raises
+`RecursionError`. These
 limits are not process-memory or wall-clock limits.
 
 The [independent fixture tool](../tools/composition_differential.py) constructs
