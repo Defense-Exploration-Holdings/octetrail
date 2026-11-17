@@ -1,9 +1,9 @@
-use octetrail::ipv6::{encode, transport_checksum, Error, Extension, Header, Limits, Packet};
+use octetrail::ipv6::{checksum, Body, Error, Extension, Header, Packet};
 
-fn literal(next: u8, payload: &[u8]) -> Vec<u8> {
+fn literal(plen: u16, next: u8, payload: &[u8]) -> Vec<u8> {
     let mut raw = vec![0; 40];
     raw[0] = 0x60;
-    raw[4..6].copy_from_slice(&(payload.len() as u16).to_be_bytes());
+    raw[4..6].copy_from_slice(&plen.to_be_bytes());
     raw[6] = next;
     raw[7] = 32;
     raw.extend_from_slice(payload);
@@ -11,160 +11,79 @@ fn literal(next: u8, payload: &[u8]) -> Vec<u8> {
 }
 
 #[test]
-fn every_short_base_header_is_need_data() {
+fn short_headers_and_any_version() {
     for size in 0..40 {
-        assert_eq!(Header::parse(&vec![0; size]), Err(Error::TruncatedHeader));
+        assert_eq!(Header::parse(&vec![0; size]), Err(Error::Short(size, 40)));
     }
+    let mut raw = literal(0, 6, b"");
+    raw[0] = 0x40;
+    let h = Header::parse(&raw).unwrap();
+    assert_eq!(h.v_fc_flow >> 28, 4);
+    assert_eq!(h.to_bytes()[..], raw[..]);
 }
 
 #[test]
-fn fixed_fields_payload_borrow_and_trailing_padding() {
-    let mut raw = literal(253, b"note");
-    raw.extend_from_slice(b"padding");
-    let packet = Packet::parse(&raw, Limits::default()).unwrap();
-    assert_eq!(packet.data, b"note");
-    assert_eq!(packet.data.as_ptr(), raw[40..].as_ptr());
-    assert_eq!(packet.header.payload_length, 4);
-    assert_eq!(packet.header.hop_limit, 32);
-    assert_eq!(packet.protocol, 253);
-    assert_eq!(packet.status, "complete");
+fn payload_is_plen_bytes_or_everything() {
+    let p = Packet::parse(&literal(4, 6, b"notepadding")).unwrap();
+    assert_eq!((p.rest, p.next, p.error), ((40, 44), Some(6), None));
+    let p = Packet::parse(&literal(0, 6, b"all of it")).unwrap();
+    assert_eq!(p.rest, (40, 49));
+    let p = Packet::parse(&literal(100, 6, b"cut")).unwrap();
+    assert_eq!(p.rest, (40, 43));
+}
+
+#[test]
+fn chain_of_every_extension() {
+    let mut payload = vec![43, 0, 1, 0, 0, 0, 5, 1]; // hop-by-hop: PadN, then option 5
+    payload.extend([44, 2, 0, 1, 0, 0, 0, 0]); // routing with one address
+    payload.extend([0x20; 16]);
+    payload.extend([51, 0, 0x00, 0x09, 0, 0, 0, 7]); // fragment, offset 1, more
+    payload.extend([60, 4, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2]); // AH, 24 bytes
+    payload.extend([b'a'; 12]);
+    payload.extend([50, 0, 0, 0, 0, 0, 0, 0]); // destination options, 8 bytes
+    payload.extend(b"espdata!");
+    let raw = literal(0, 0, &payload);
+    let p = Packet::parse(&raw).unwrap();
+    let kinds: Vec<u8> = p.extensions.iter().map(|e| e.kind).collect();
+    assert_eq!(kinds, [0, 43, 44, 51, 60, 50]);
     assert_eq!(
-        encode(packet.header, &[], packet.data, Limits::default())
-            .unwrap()
-            .0,
-        raw[..44]
+        (p.next, p.rest, p.error),
+        (None, (raw.len(), raw.len()), None)
+    );
+    let routing = &p.extensions[1];
+    assert_eq!(routing.body, Body::Routing(vec![(56, 72)]));
+    assert_eq!(routing.length, 24);
+    assert_eq!(p.extensions[2].fields, [51, 0, 9, 7]);
+    let ah = &p.extensions[3];
+    assert_eq!((ah.length, ah.data.1), (24, raw.len()));
+    assert_eq!(ah.body, Body::Ah((92, 104)));
+    let esp = &p.extensions[5];
+    assert_eq!(
+        (esp.fields.clone(), esp.data),
+        (vec![0x6573_7064, 0x6174_6121], (raw.len(), raw.len()))
     );
 }
 
 #[test]
-fn ordered_duplicate_extensions_are_borrowed() {
-    let data = [60, 0, 0, 0, 0, 0, 0, 0, 253, 0, 0, 0, 0, 0, 0, 0, b'x'];
-    let raw = literal(60, &data);
-    let packet = Packet::parse(&raw, Limits::default()).unwrap();
-    assert_eq!(packet.extensions.len(), 2);
-    assert_eq!(packet.extensions[0].bytes.as_ptr(), raw[40..].as_ptr());
-    assert_eq!(packet.data, b"x");
-    assert_eq!(packet.protocol, 253);
-    assert_eq!(
-        encode(
-            packet.header,
-            &packet.extensions,
-            packet.data,
-            Limits::default()
-        )
-        .unwrap()
-        .0,
-        raw
-    );
-}
-
-#[test]
-fn any_non_atomic_fragment_stops_extension_traversal() {
-    for (field, fragmented) in [(0u16, false), (1, true), (8, true), (9, true)] {
-        let mut body = vec![253, 0];
-        body.extend_from_slice(&field.to_be_bytes());
-        body.extend_from_slice(&[0; 4]);
-        body.extend_from_slice(b"notes");
-        let raw = literal(44, &body);
-        let packet = Packet::parse(&raw, Limits::default()).unwrap();
-        assert_eq!(packet.fragmented, fragmented);
-        assert_eq!(packet.data, b"notes");
-    }
-    let raw = literal(44, &[60, 0, 0, 1, 0, 0, 0, 0, 253, 0, 0, 0, 0, 0, 0, 0]);
-    let p = Packet::parse(&raw, Limits::default()).unwrap();
-    assert!(p.fragmented);
+fn a_short_extension_keeps_the_ones_before_it() {
+    let raw = literal(0, 44, &[0, 0, 0, 0, 0, 0, 0, 0, 59]);
+    let p = Packet::parse(&raw).unwrap();
     assert_eq!(p.extensions.len(), 1);
-    assert_eq!(p.protocol, 60);
+    assert_eq!(p.error, Some(Error::Short(1, 2)));
 }
 
 #[test]
-fn incomplete_data_is_preserved_without_decoding() {
-    let mut raw = literal(6, b"note");
-    raw[5] = 12;
-    let packet = Packet::parse(&raw, Limits::default()).unwrap();
-    assert_eq!(packet.status, "truncated_payload");
-    assert_eq!(packet.data, b"note");
-    let raw = literal(0, &[6, 0, 0, 0]);
-    let packet = Packet::parse(&raw, Limits::default()).unwrap();
-    assert_eq!(packet.status, "incomplete_extension");
-    assert!(packet.extensions.is_empty());
-    assert_eq!(packet.data, &[6, 0, 0, 0]);
-    let mut raw = literal(6, b"note");
-    raw[5] = 0;
+fn ah_with_zero_length_drops_four_bytes() {
+    let ext =
+        Extension::parse(51, &[59, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 1, 2, 3, 4, 5, 6]).unwrap();
     assert_eq!(
-        Packet::parse(&raw, Limits::default()).unwrap().status,
-        "unsupported_zero_length"
+        (ext.length, ext.data, ext.body),
+        (8, (12, 18), Body::Ah((12, 14)))
     );
 }
 
 #[test]
-fn extension_and_packet_limits_are_explicit() {
-    let mut body = Vec::new();
-    for index in 0..17 {
-        body.extend_from_slice(&[if index == 16 { 253 } else { 60 }, 0, 0, 0, 0, 0, 0, 0]);
-    }
-    let raw = literal(60, &body);
-    assert!(matches!(
-        Packet::parse(&raw, Limits::default()),
-        Err(Error::Limit)
-    ));
-    let raw = literal(60, &[253, 0, 0, 0, 0, 0, 0, 0]);
-    assert!(matches!(
-        Packet::parse(
-            &raw,
-            Limits {
-                max_extension_bytes: 7,
-                ..Limits::default()
-            }
-        ),
-        Err(Error::Limit)
-    ));
-    assert!(matches!(
-        Packet::parse(&vec![0; 65576], Limits::default()),
-        Err(Error::Limit)
-    ));
-}
-
-#[test]
-fn encoding_checks_chain_and_preserves_length() {
-    let header = Header {
-        next_header: 6,
-        ..Header::default()
-    };
-    let (raw, protocol, _, _) = encode(header, &[], b"note", Limits::default()).unwrap();
-    assert_eq!(raw[4..6], [0, 0]);
-    assert_eq!(protocol, 6);
-    let ext = Extension {
-        kind: 60,
-        bytes: &[6, 0, 0, 0, 0, 0, 0, 0],
-    };
-    assert_eq!(
-        encode(header, &[ext], b"", Limits::default()).unwrap_err(),
-        Error::InvalidExtension
-    );
-    assert_eq!(
-        encode(header, &[], &vec![0; 65536], Limits::default()).unwrap_err(),
-        Error::Limit
-    );
-    let header = Header {
-        next_header: 43,
-        ..header
-    };
-    let ext = Extension {
-        kind: 43,
-        bytes: &[6, 0, 0, 1, 0, 0, 0, 0],
-    };
-    assert!(!encode(header, &[ext], b"", Limits::default()).unwrap().3);
-}
-
-#[test]
-fn independent_udp_pseudoheader_word_sums() {
-    assert_eq!(
-        transport_checksum([0; 16], [0; 16], 17, &[0, 1, 0, 2, 0, 8, 0, 0]).unwrap(),
-        0xffdb
-    );
-    assert_eq!(
-        transport_checksum([0; 16], [0; 16], 17, &[0, 1, 0, 2, 0, 10, 0, 0, 0xff, 0xd7]).unwrap(),
-        0xffff
-    );
+fn checksum_pads_an_odd_tail() {
+    assert_eq!(checksum(&[b"\x01"]), !0x0100);
+    assert_eq!(checksum(&[b"\x00\x01", b"\xf2\x03"]), !0xf204);
 }

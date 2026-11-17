@@ -1,42 +1,29 @@
-//! Bounded IPv6 base headers and opaque extension framing. No reassembly.
+//! IPv6 base headers and the extension headers dpkt 1.9.8 walks.
+//!
+//! Parsing follows `dpkt.ip6`: the payload is `plen` bytes (all of them when
+//! `plen` is zero), and hop-by-hop, routing, fragment, AH, ESP and destination
+//! options headers are read in a chain until another protocol follows. Nothing
+//! is reassembled or validated beyond what dpkt reads.
 
 use std::fmt;
 
 pub const HEADER_LEN: usize = 40;
-pub const MAX_PAYLOAD_LEN: usize = u16::MAX as usize;
+/// Extension header protocol numbers, in dpkt's `EXT_HDRS` order.
+pub const EXTENSIONS: [u8; 6] = [0, 43, 44, 51, 50, 60];
 
-#[derive(Clone, Copy, Debug)]
-pub struct Limits {
-    pub max_extensions: usize,
-    pub max_extension_bytes: usize,
-}
-
-impl Default for Limits {
-    fn default() -> Self {
-        Self {
-            max_extensions: 16,
-            max_extension_bytes: 2048,
-        }
-    }
-}
-
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
-    TruncatedHeader,
-    UnsupportedVersion(u8),
-    Limit,
-    InvalidExtension,
-    Allocation,
+    /// A fixed header needs more bytes: (available, needed).
+    Short(usize, usize),
+    /// An option type or length byte is past the end of the buffer.
+    Options,
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::TruncatedHeader => write!(f, "IPv6 requires a complete 40-byte base header"),
-            Self::UnsupportedVersion(v) => write!(f, "unsupported IPv6 version {v}"),
-            Self::Limit => write!(f, "IPv6 packet or extension limit exceeded"),
-            Self::InvalidExtension => write!(f, "IPv6 extension framing or chain is inconsistent"),
-            Self::Allocation => write!(f, "cannot allocate IPv6 output"),
+            Self::Short(have, need) => write!(f, "got {have}, {need} needed at least"),
+            Self::Options => write!(f, "IPv6 option runs past the end"),
         }
     }
 }
@@ -44,10 +31,10 @@ impl std::error::Error for Error {}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Header {
-    pub version_class_flow: u32,
-    pub payload_length: u16,
-    pub next_header: u8,
-    pub hop_limit: u8,
+    pub v_fc_flow: u32,
+    pub plen: u16,
+    pub nxt: u8,
+    pub hlim: u8,
     pub src: [u8; 16],
     pub dst: [u8; 16],
 }
@@ -55,10 +42,10 @@ pub struct Header {
 impl Default for Header {
     fn default() -> Self {
         Self {
-            version_class_flow: 0x60000000,
-            payload_length: 0,
-            next_header: 0,
-            hop_limit: 0,
+            v_fc_flow: 0x6000_0000,
+            plen: 0,
+            nxt: 0,
+            hlim: 0,
             src: [0; 16],
             dst: [0; 16],
         }
@@ -66,213 +53,298 @@ impl Default for Header {
 }
 
 impl Header {
+    /// Any version is accepted, as in dpkt.
     pub fn parse(raw: &[u8]) -> Result<Self, Error> {
         if raw.len() < HEADER_LEN {
-            return Err(Error::TruncatedHeader);
+            return Err(Error::Short(raw.len(), HEADER_LEN));
         }
-        let h = Self {
-            version_class_flow: u32::from_be_bytes(raw[..4].try_into().expect("fixed base field")),
-            payload_length: u16::from_be_bytes([raw[4], raw[5]]),
-            next_header: raw[6],
-            hop_limit: raw[7],
+        Ok(Self {
+            v_fc_flow: u32::from_be_bytes([raw[0], raw[1], raw[2], raw[3]]),
+            plen: u16::from_be_bytes([raw[4], raw[5]]),
+            nxt: raw[6],
+            hlim: raw[7],
             src: raw[8..24].try_into().expect("fixed source field"),
             dst: raw[24..40].try_into().expect("fixed destination field"),
-        };
-        h.validate()?;
-        Ok(h)
+        })
     }
 
-    fn validate(self) -> Result<(), Error> {
-        let v = (self.version_class_flow >> 28) as u8;
-        if v != 6 {
-            return Err(Error::UnsupportedVersion(v));
-        }
-        Ok(())
-    }
-
-    pub fn to_bytes(self) -> Result<[u8; HEADER_LEN], Error> {
-        self.validate()?;
+    pub fn to_bytes(self) -> [u8; HEADER_LEN] {
         let mut raw = [0; HEADER_LEN];
-        raw[..4].copy_from_slice(&self.version_class_flow.to_be_bytes());
-        raw[4..6].copy_from_slice(&self.payload_length.to_be_bytes());
-        raw[6] = self.next_header;
-        raw[7] = self.hop_limit;
+        raw[..4].copy_from_slice(&self.v_fc_flow.to_be_bytes());
+        raw[4..6].copy_from_slice(&self.plen.to_be_bytes());
+        raw[6] = self.nxt;
+        raw[7] = self.hlim;
         raw[8..24].copy_from_slice(&self.src);
         raw[24..].copy_from_slice(&self.dst);
-        Ok(raw)
+        raw
     }
 }
 
+/// One option of a hop-by-hop or destination options header. Pad1 and PadN
+/// are skipped, as in dpkt.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Extension<'a> {
+pub struct Opt {
     pub kind: u8,
-    pub bytes: &'a [u8],
+    pub length: u8,
+    /// The option data, as a range of the buffer the header was read from.
+    pub data: (usize, usize),
 }
 
-fn extension_length(kind: u8, raw: &[u8]) -> Option<usize> {
-    if raw.len() < 2 {
-        return None;
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Body {
+    Options(Vec<Opt>),
+    /// Ranges of the 16-byte address slots, cut to the bytes present.
+    Routing(Vec<(usize, usize)>),
+    Fragment,
+    /// The range of `auth_data`.
+    Ah((usize, usize)),
+    Esp,
+}
+
+/// One extension header, with every range relative to the buffer it was read from.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Extension {
+    pub kind: u8,
+    /// The header fields in `__hdr__` order.
+    pub fields: Vec<u32>,
+    /// dpkt's `data` attribute.
+    pub data: (usize, usize),
+    /// dpkt's `length` attribute: the bytes the chain moves past.
+    pub length: usize,
+    pub body: Body,
+}
+
+fn be(raw: &[u8]) -> u32 {
+    raw.iter().fold(0, |n, b| (n << 8) | u32::from(*b))
+}
+
+fn fixed(buf: &[u8], widths: &[usize]) -> Result<Vec<u32>, Error> {
+    let need = widths.iter().sum();
+    if buf.len() < need {
+        return Err(Error::Short(buf.len(), need));
     }
-    match kind {
-        0 | 43 | 60 => Some((usize::from(raw[1]) + 1) * 8),
-        44 => Some(8),
-        51 if raw[1] >= 1 => Some((usize::from(raw[1]) + 2) * 4),
-        _ => None,
-    }
+    let mut at = 0;
+    Ok(widths
+        .iter()
+        .map(|w| {
+            at += w;
+            be(&buf[at - w..at])
+        })
+        .collect())
 }
 
-fn supported_extension(kind: u8) -> bool {
-    matches!(kind, 0 | 43 | 44 | 51 | 60)
-}
-
-fn non_atomic(ext: Extension<'_>) -> bool {
-    ext.kind == 44 && u16::from_be_bytes([ext.bytes[2], ext.bytes[3]]) & 0xfff9 != 0
-}
-
-#[derive(Debug)]
-pub struct Packet<'a> {
-    pub header: Header,
-    pub extensions: Vec<Extension<'a>>,
-    pub data: &'a [u8],
-    pub protocol: u8,
-    pub fragmented: bool,
-    pub status: &'static str,
-}
-
-impl<'a> Packet<'a> {
-    pub fn parse(raw: &'a [u8], limits: Limits) -> Result<Self, Error> {
-        if raw.len() > HEADER_LEN + MAX_PAYLOAD_LEN {
-            return Err(Error::Limit);
+fn options(buf: &[u8], length: usize) -> Result<Vec<Opt>, Error> {
+    // dpkt reads options from everything after the two fixed bytes, not only
+    // from the declared length.
+    let data = &buf[2..];
+    let byte = |i: usize| data.get(i).copied().ok_or(Error::Options);
+    let mut found = Vec::new();
+    let mut index = 0;
+    while index + 2 < length {
+        let kind = byte(index)?;
+        if kind == 0 {
+            index += 1;
+            continue;
         }
+        let size = byte(index + 1)?;
+        let start = (index + 2).min(data.len());
+        let end = (index + 2 + usize::from(size)).min(data.len());
+        if kind != 1 {
+            found.push(Opt {
+                kind,
+                length: size,
+                data: (2 + start, 2 + end),
+            });
+        }
+        index += usize::from(size) + 2;
+    }
+    Ok(found)
+}
+
+impl Extension {
+    /// Read the extension header `kind` from the start of `buf`.
+    pub fn parse(kind: u8, buf: &[u8]) -> Result<Self, Error> {
+        let n = buf.len();
+        let clamp = |start: usize, end: usize| (start.min(n), end.min(n));
+        Ok(match kind {
+            0 | 60 => {
+                let fields = fixed(buf, &[1, 1])?;
+                let length = (fields[1] as usize + 1) * 8;
+                Self {
+                    kind,
+                    body: Body::Options(options(buf, length)?),
+                    fields,
+                    data: clamp(2, length),
+                    length,
+                }
+            }
+            43 => {
+                let fields = fixed(buf, &[1, 1, 1, 1, 4])?;
+                let count = fields[1] as usize / 2;
+                let data = clamp(8, 8 + count * 16);
+                let addresses = (0..count)
+                    .map(|i| clamp(data.0 + i * 16, data.0 + i * 16 + 16))
+                    .map(|(a, b)| (a.min(data.1), b.min(data.1)))
+                    .collect();
+                Self {
+                    kind,
+                    length: fields[1] as usize * 8 + 8,
+                    fields,
+                    data,
+                    body: Body::Routing(addresses),
+                }
+            }
+            44 => Self {
+                kind,
+                fields: fixed(buf, &[1, 1, 2, 4])?,
+                data: (n.min(8), n.min(8)),
+                length: 8,
+                body: Body::Fragment,
+            },
+            51 => {
+                let fields = fixed(buf, &[1, 1, 2, 4, 4])?;
+                let rest = n - 12;
+                // dpkt slices data[:(len - 1) * 4], so a zero length drops the last four bytes.
+                let auth = match fields[1] as usize {
+                    0 => rest.saturating_sub(4),
+                    len => ((len - 1) * 4).min(rest),
+                };
+                Self {
+                    kind,
+                    length: (fields[1] as usize + 2) * 4,
+                    fields,
+                    data: (12, n),
+                    body: Body::Ah((12, 12 + auth)),
+                }
+            }
+            50 => Self {
+                kind,
+                fields: fixed(buf, &[4, 4])?,
+                data: (8, n),
+                length: n,
+                body: Body::Esp,
+            },
+            _ => panic!("{kind} is not an IPv6 extension header"),
+        })
+    }
+
+    /// The next header, or `None` after ESP, whose header has no such field.
+    pub fn next(&self) -> Option<u8> {
+        (self.kind != 50).then(|| self.fields[0] as u8)
+    }
+
+    fn shift(mut self, by: usize) -> Self {
+        let move_range = |r: &mut (usize, usize)| *r = (r.0 + by, r.1 + by);
+        move_range(&mut self.data);
+        match &mut self.body {
+            Body::Options(found) => found.iter_mut().for_each(|o| move_range(&mut o.data)),
+            Body::Routing(slots) => slots.iter_mut().for_each(move_range),
+            Body::Ah(auth) => move_range(auth),
+            Body::Fragment | Body::Esp => {}
+        }
+        self
+    }
+}
+
+/// A parsed packet. Ranges are relative to the whole input.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Packet {
+    pub header: Header,
+    /// The extension headers read, in order.
+    pub extensions: Vec<Extension>,
+    /// What follows the last extension header: the bytes dpkt dispatches.
+    pub rest: (usize, usize),
+    /// The protocol of `rest`, or `None` after ESP.
+    pub next: Option<u8>,
+    /// Set when an extension header could not be read. `extensions` then
+    /// holds the headers before it, which dpkt has already stored.
+    pub error: Option<Error>,
+}
+
+impl Packet {
+    pub fn parse(raw: &[u8]) -> Result<Self, Error> {
         let header = Header::parse(raw)?;
-        let available = &raw[HEADER_LEN..];
-        let length = usize::from(header.payload_length);
+        let end = match usize::from(header.plen) {
+            0 => raw.len(),
+            plen => (HEADER_LEN + plen).min(raw.len()),
+        };
         let mut packet = Self {
             header,
             extensions: Vec::new(),
-            data: &available[..length.min(available.len())],
-            protocol: header.next_header,
-            fragmented: false,
-            status: "complete",
+            rest: (HEADER_LEN, end),
+            next: Some(header.nxt),
+            error: None,
         };
-        if length > available.len() {
-            packet.status = "truncated_payload";
-            return Ok(packet);
-        }
-        if length == 0 && !available.is_empty() {
-            packet.data = available;
-            packet.status = "unsupported_zero_length";
-            return Ok(packet);
-        }
-        let mut used = 0usize;
-        while supported_extension(packet.protocol) {
-            if packet.extensions.len() >= limits.max_extensions {
-                return Err(Error::Limit);
-            }
-            let Some(size) = extension_length(packet.protocol, packet.data) else {
-                packet.status = "incomplete_extension";
-                break;
-            };
-            used = used.checked_add(size).ok_or(Error::Limit)?;
-            if used > limits.max_extension_bytes {
-                return Err(Error::Limit);
-            }
-            if packet.data.len() < size {
-                packet.status = "incomplete_extension";
-                break;
-            }
-            let ext = Extension {
-                kind: packet.protocol,
-                bytes: &packet.data[..size],
-            };
-            packet
-                .extensions
-                .try_reserve(1)
-                .map_err(|_| Error::Allocation)?;
-            packet.extensions.push(ext);
-            packet.protocol = ext.bytes[0];
-            packet.data = &packet.data[size..];
-            if non_atomic(ext) {
-                packet.fragmented = true;
-                break;
+        let mut at = HEADER_LEN;
+        while let Some(kind) = packet.next.filter(|k| EXTENSIONS.contains(k)) {
+            match Extension::parse(kind, &raw[at..end]) {
+                Ok(ext) => {
+                    let ext = ext.shift(at);
+                    at = at.saturating_add(ext.length).min(end);
+                    packet.next = ext.next();
+                    packet.extensions.push(ext);
+                }
+                Err(error) => {
+                    packet.error = Some(error);
+                    break;
+                }
             }
         }
+        packet.rest = (at, end);
         Ok(packet)
     }
 }
 
-/// Serialize assigned fields. Payload length remains caller-owned, as in dpkt.
-/// Returns wire bytes, final protocol, fragment state and checksum eligibility.
-pub fn encode(
-    header: Header,
-    extensions: &[Extension<'_>],
-    data: &[u8],
-    limits: Limits,
-) -> Result<(Vec<u8>, u8, bool, bool), Error> {
-    let fixed = header.to_bytes()?;
-    if extensions.len() > limits.max_extensions {
-        return Err(Error::Limit);
-    }
-    let mut used = 0usize;
-    let mut protocol = header.next_header;
-    let mut fragmented = false;
-    let mut checksum_supported = true;
-    for ext in extensions {
-        if fragmented
-            || ext.kind != protocol
-            || extension_length(ext.kind, ext.bytes) != Some(ext.bytes.len())
-        {
-            return Err(Error::InvalidExtension);
+/// The Internet checksum of the concatenated parts, in network order, as
+/// dpkt's `in_cksum_done(in_cksum_add(...))` computes it. Every part but the
+/// last must have an even length.
+pub fn checksum(parts: &[&[u8]]) -> u16 {
+    let mut sum: u64 = 0;
+    for part in parts {
+        let mut words = part.chunks_exact(2);
+        for w in &mut words {
+            sum += u64::from(u16::from_be_bytes([w[0], w[1]]));
         }
-        used = used.checked_add(ext.bytes.len()).ok_or(Error::Limit)?;
-        if used > limits.max_extension_bytes {
-            return Err(Error::Limit);
+        if let [last] = words.remainder() {
+            sum += u64::from(*last) << 8;
         }
-        fragmented = non_atomic(*ext);
-        if ext.kind == 43 && ext.bytes[3] != 0 {
-            checksum_supported = false;
-        }
-        protocol = ext.bytes[0];
     }
-    let payload_len = used.checked_add(data.len()).ok_or(Error::Limit)?;
-    if payload_len > MAX_PAYLOAD_LEN {
-        return Err(Error::Limit);
-    }
-    let mut output = Vec::new();
-    output
-        .try_reserve_exact(HEADER_LEN + payload_len)
-        .map_err(|_| Error::Allocation)?;
-    output.extend_from_slice(&fixed);
-    for ext in extensions {
-        output.extend_from_slice(ext.bytes);
-    }
-    output.extend_from_slice(data);
-    Ok((output, protocol, fragmented, checksum_supported))
-}
-
-pub fn transport_checksum(
-    src: [u8; 16],
-    dst: [u8; 16],
-    protocol: u8,
-    data: &[u8],
-) -> Result<u16, Error> {
-    if data.len() > MAX_PAYLOAD_LEN || !matches!(protocol, 6 | 17) {
-        return Err(Error::Limit);
-    }
-    let mut pseudo = [0; 40];
-    pseudo[..16].copy_from_slice(&src);
-    pseudo[16..32].copy_from_slice(&dst);
-    pseudo[32..36].copy_from_slice(&(data.len() as u32).to_be_bytes());
-    pseudo[39] = protocol;
-    let mut sum =
-        u32::from(!crate::ipv4::checksum(&pseudo)) + u32::from(!crate::ipv4::checksum(data));
     while sum >> 16 != 0 {
         sum = (sum & 0xffff) + (sum >> 16);
     }
-    let checksum = !(sum as u16);
-    Ok(if protocol == 17 && checksum == 0 {
-        0xffff
-    } else {
-        checksum
-    })
+    !(sum as u16)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn checksum_matches_dpkt() {
+        let data: Vec<u8> = (0..15).collect();
+        // dpkt.in_cksum(bytes(range(15))) is 51150.
+        assert_eq!(checksum(&[&data]), 51150);
+        assert_eq!(checksum(&[&data[..2], &data[2..]]), 51150);
+        assert_eq!(checksum(&[]), 0xffff);
+    }
+
+    #[test]
+    fn options_read_past_the_declared_length() {
+        // len 0 means 8 bytes; the option at index 4 has data beyond them.
+        let buf = [59, 0, 1, 0, 0, 0, 5, 9, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let ext = Extension::parse(0, &buf).unwrap();
+        assert_eq!(ext.data, (2, 8));
+        let Body::Options(found) = ext.body else {
+            panic!()
+        };
+        assert_eq!(
+            found,
+            [Opt {
+                kind: 5,
+                length: 9,
+                data: (8, 17)
+            }]
+        );
+        assert_eq!(Extension::parse(0, &[59, 0, 7]), Err(Error::Options));
+    }
 }

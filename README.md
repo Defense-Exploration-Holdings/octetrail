@@ -26,8 +26,8 @@ The [UniversalReader guide](docs/universal-reader.md) describes measured
 Ethernet II, IPv4/IPv6 and opaque TCP/UDP objects can be composed and decoded offline.
 See the [composition guide](docs/composition.md) for dispatch, options, checksum
 update rules, resource bounds and measured compatibility limits.
-The [IPv6 and raw-IP guide](docs/ipv6.md) covers bounded extension framing,
-fragment handling and explicit version dispatch without changing capture iteration.
+The [IPv6 module](docs/ipv6.md) parses and packs IPv6 and its extension headers
+the way dpkt 1.9.8 does, and adds explicit raw-IP version selection.
 The [DNS module](docs/dns.md) parses and packs messages and common record fields
 the way dpkt 1.9.8 does, without changing transport payloads or performing lookups.
 The [HTTP module](docs/http.md) parses and packs HTTP/1.x requests and responses

@@ -37,6 +37,26 @@ New: `octetrail.Packet`, dpkt's base class for header classes, with
 `hexdump`, `in_cksum`, `in_cksum_add` and `in_cksum_done` helpers
 ([Packet guide](packet.md)).
 
+IPv6 now parses and packs the way dpkt 1.9.8 does:
+
+- Extension headers are `IP6HopOptsHeader`, `IP6RoutingHeader`,
+  `IP6FragmentHeader`, `IP6AHHeader`, `IP6ESPHeader` and `IP6DstOptsHeader`
+  objects with dpkt's fields, in `extension_hdrs` and `all_extension_headers`.
+- The payload is `plen` bytes, or everything when `plen` is 0, and a payload
+  cut short is still passed to its protocol class. Any version is accepted.
+  Fragments after the first stay bytes.
+- When `nxt` is 44 and the last extension header is not a fragment header,
+  `ip6.FragmentOffsetError` (an `UnpackError` and an `AttributeError`) is
+  raised where dpkt raises `AttributeError`.
+- Packing takes `p` from the last extension header and fills a zero TCP or UDP
+  checksum without mapping 0 to `0xffff`. Checksums behind a routing header are
+  computed too.
+- `IP6.get_proto` and `IP6.set_proto` choose payload classes. IPv4 and IPv6
+  payloads are decoded as well as TCP and UDP.
+- `ip6.ExtensionHeader`, `payload_status`, `fragmented`, `IP6_HDR_LEN`,
+  `MAX_EXTENSIONS`, `MAX_EXTENSION_BYTES` and `ip6.LimitError` are removed, with
+  the extension count and byte limits.
+
 ## 0.3.1
 
 First PyPI upload of the 0.3.0 changes. The code is the same as 0.3.0, which

@@ -25,8 +25,10 @@ fn network(data: &[u8]) {
         transport(packet.header.protocol, packet.data);
         let _ = packet.to_bytes();
     }
-    if let Ok(packet) = ipv6::Packet::parse(data, ipv6::Limits::default()) {
-        transport(packet.protocol, packet.data);
+    if let Ok(packet) = ipv6::Packet::parse(data) {
+        if let Some(protocol) = packet.next {
+            transport(protocol, &data[packet.rest.0..packet.rest.1]);
+        }
     }
 }
 
