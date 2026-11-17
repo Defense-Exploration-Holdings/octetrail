@@ -6,6 +6,7 @@
 //! when decoding, and converts lengths with `int()`. Each of those rules is
 //! reproduced here so that the same bytes give the same fields and errors.
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::fmt;
 
 const METHODS: &[&str] = &[
@@ -190,6 +191,9 @@ impl<'a> Reader<'a> {
 /// dpkt's `parse_headers`.
 fn headers(reader: &mut Reader<'_>) -> Result<Headers, Error> {
     let mut out: Headers = Vec::new();
+    // Position of each name in `out`, so a repeated name is found without a
+    // scan of every earlier header.
+    let mut index: HashMap<String, usize> = HashMap::new();
     loop {
         let line = ascii(strip_bytes(reader.readline()));
         if line.is_empty() {
@@ -203,9 +207,12 @@ fn headers(reader: &mut Reader<'_>) -> Result<Headers, Error> {
             return Err(Error::Unpack(format!("invalid header: {line:?}")));
         }
         let key = name.to_ascii_lowercase();
-        match out.iter_mut().find(|(k, _)| *k == key) {
-            Some((_, values)) => values.push(value.to_owned()),
-            None => out.push((key, vec![value.to_owned()])),
+        match index.get(&key) {
+            Some(&i) => out[i].1.push(value.to_owned()),
+            None => {
+                index.insert(key.clone(), out.len());
+                out.push((key, vec![value.to_owned()]));
+            }
         }
     }
 }

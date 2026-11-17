@@ -43,7 +43,7 @@ def main():
             path = Path(directory) / f"case-{number}.pcapng"
             path.write_bytes(raw)
             paths.append(str(path))
-        actual = probe(args.python, "octetrail", "0.3.1", paths)
+        actual = probe(args.python, "octetrail", "0.4.0", paths)
         for result, (_, records, snaplen, linktype) in zip(actual["captures"], cases, strict=True):
             assert result["records"] == records
             offset = {1: 14, 113: 16}.get(linktype, 0)
@@ -73,7 +73,7 @@ def main():
         path.write_bytes(mixed)
         expected = [["1.25", "float", b"one".hex()], ["-1.0", "float", b"two".hex()]]
         assert (
-            probe(args.python, "octetrail", "0.3.1", [str(path)])["captures"][0]["records"]
+            probe(args.python, "octetrail", "0.4.0", [str(path)])["captures"][0]["records"]
             == expected
         )
         for version, python in (("1.9.8", args.oracle_198), ("1.9.6", args.oracle_196)):

@@ -50,6 +50,16 @@ class UDP:
         for (name, _), value in zip(_FIELDS, fields, strict=True):
             setattr(self, name, value)
         self.data = payload
+        self.__dict__.pop("_jumbo", None)
+
+    @classmethod
+    def _from_jumbo(cls, buf):
+        """Decode a datagram over the standalone limit, carried in an IPv6 jumbo payload."""
+        self = cls.__new__(cls)
+        self.unpack(buf[:UDP_HDR_LEN])
+        self.data = buf[UDP_HDR_LEN:]
+        self._jumbo = True
+        return self
 
     def _header_args(self):
         result = []
@@ -69,6 +79,9 @@ class UDP:
     def __bytes__(self):
         fields = self._header_args()
         size = len(self)
+        if getattr(self, "_jumbo", False):
+            # Decoded from an IPv6 jumbo payload: packs back at any size, as in dpkt.
+            return _native._udp_header(fields) + self.data
         if size > DEFAULT_MAX_DATAGRAM_BYTES:
             raise LimitError(f"UDP buffer length {size} exceeds limit {DEFAULT_MAX_DATAGRAM_BYTES}")
         return _native._udp_pack(fields, self.data)

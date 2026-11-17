@@ -46,7 +46,9 @@ assert bytes(Note(id=9)) == b"\x01\x10\x00\x09"
   `len()` is the header length plus `len(data)`. `str()` is the text of `bytes()`.
 - Iterating yields `(name, value)` pairs for the header fields, so `dict(p)`
   works. `p[Cls]` returns the first payload of class `Cls` down the `data`
-  chain, or raises `KeyError`, and `Cls in p` tests for one.
+  chain, or raises `KeyError`, and `Cls in p` tests for one. The chain passes
+  through IPv4, TCP and UDP objects too, although they are not `Packet`
+  subclasses yet.
 - `repr()` shows the public fields that differ from their defaults, the other
   attributes that do not start with `_`, and `data` when it is not empty.
   `pprint()` prints every field on its own line and descends into payloads.

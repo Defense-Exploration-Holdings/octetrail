@@ -40,7 +40,7 @@ def main():
     parser.add_argument("--oracle-196", required=True)
     args = parser.parse_args()
     payload = cases()
-    actual = probe(args.python, "octetrail", "0.3.1", payload)
+    actual = probe(args.python, "octetrail", "0.4.0", payload)
     outputs = []
     for result, case in zip(actual["captures"], payload, strict=True):
         raw = bytes.fromhex(result["hex"])
