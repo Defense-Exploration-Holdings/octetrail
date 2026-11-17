@@ -8,7 +8,6 @@ from . import arp as arp
 from . import capture, ethernet, ip, pcap, pcapng
 from . import cdp as cdp
 from . import crc32c as crc32c
-from . import dhcp as dhcp
 from . import dns as dns
 from . import dtp as dtp
 from . import edp as edp
@@ -95,7 +94,6 @@ __all__.extend(("ah", "esp"))
 __all__.extend(("crc32c", "ospf", "sctp"))
 __all__.extend(("gre", "pim"))
 __all__.append("arp")
-__all__.append("dhcp")
 __all__.append("sip")
 __all__.append("telnet")
 __all__.extend(("aoe", "aoeata", "aoecfg"))

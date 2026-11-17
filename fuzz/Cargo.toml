@@ -36,13 +36,6 @@ doc = false
 bench = false
 
 [[bin]]
-name = "dhcp"
-path = "fuzz_targets/dhcp.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
 name = "dns"
 path = "fuzz_targets/dns.rs"
 test = false
