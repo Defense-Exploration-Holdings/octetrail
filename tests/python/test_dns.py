@@ -1,6 +1,7 @@
-"""Explicit DNS API with independently constructed ordinary offline messages."""
+"""DNS messages parsed and packed the way dpkt 1.9.8 does."""
 
 import importlib.util
+import json
 import struct
 import subprocess
 import sys
@@ -20,7 +21,9 @@ SPEC.loader.exec_module(F)
 class DnsTests(unittest.TestCase):
     def test_independent_fixture_fields_bytes_construction_mutation(self):
         report = F.exercise(octetrail, "octetrail")
-        self.assertEqual(report["cases"], {c["id"]: F.expected(c, "octetrail") for c in F.cases()})
+        # Through JSON, as the differential compares them: a tuple becomes a list.
+        cases = json.loads(json.dumps(report["cases"]))
+        self.assertEqual(cases, {c["id"]: F.expected(c, "octetrail") for c in F.cases()})
         self.assertEqual(len(report["constructors"]), 12)
 
     def test_explicit_dns_does_not_change_transport_dispatch(self):
@@ -34,87 +37,122 @@ class DnsTests(unittest.TestCase):
             self.assertEqual(decoded.data.data, wire)
             self.assertEqual(dns.DNS(decoded.data.data).qd[0].name, F.QNAME)
 
-    def test_positive_name_record_message_boundaries(self):
-        name = ".".join(("a" * 63, "b" * 63, "c" * 63, "d" * 61))
+    def test_long_names_and_large_messages(self):
+        name = ".".join(("a" * 63, "b" * 63, "c" * 63, "d" * 62))
         message = dns.DNS(qd=[dns.DNS.Q(name=name)])
         self.assertEqual(dns.DNS(bytes(message)).qd[0].name, name)
-        with self.assertRaises(PackError):
-            bytes(dns.DNS(qd=[dns.DNS.Q(name=name + "x")]))
-        message = dns.DNS(qd=[dns.DNS.Q(name="") for _ in range(1024)])
-        self.assertEqual(len(dns.DNS(bytes(message)).qd), 1024)
-        message.qd.append(dns.DNS.Q(name=""))
-        with self.assertRaises(dns.LimitError) as result:
-            bytes(message)
-        self.assertNotIsInstance(result.exception, octetrail.UnpackError)
-        raw = b"x" * (65535 - 23)
-        message = dns.DNS(an=[dns.DNS.RR(name="", type=65280, rdata=raw)])
-        self.assertEqual(len(bytes(message)), 65535)
+        with self.assertRaises(octetrail.UnpackError):
+            dns.DNS(bytes(dns.DNS(qd=[dns.DNS.Q(name=name + "x")])))
+        message = dns.DNS(qd=[dns.DNS.Q(name="") for _ in range(5000)])
+        self.assertEqual(len(dns.DNS(bytes(message)).qd), 5000)
+        raw = b"x" * 65535
+        message = dns.DNS(an=[dns.DNS.RR(name="", type=dns.DNS_NULL, rdata=raw)])
         self.assertEqual(dns.DNS(bytes(message)).an[0].rdata, raw)
-        with self.assertRaises(dns.LimitError):
-            dns.DNS(bytes(message) + b"x")
+        with self.assertRaises(PackError):
+            bytes(dns.DNS(an=[dns.DNS.RR(name="", type=dns.DNS_NULL, rdata=raw + b"x")]))
+        with self.assertRaises(PackError):
+            bytes(dns.DNS(qd=[dns.DNS.Q(name="x" * 256)]))
 
-    def test_generic_truncation_and_declared_count_limits(self):
+    def test_truncation_raises_the_dpkt_error_class(self):
         for n in range(12):
             with self.assertRaises(NeedData):
                 dns.DNS(bytes(n))
         query = bytes.fromhex(next(c["wire"] for c in F.cases() if c["id"] == "query"))
-        with self.assertRaises(NeedData):
-            dns.DNS(query[:-1])
+        # Missing name bytes are NeedData; a short type or class is UnpackError.
+        for n in range(12, len(query)):
+            with self.assertRaises(octetrail.UnpackError) as result:
+                dns.DNS(query[:n])
+            self.assertEqual(type(result.exception) is NeedData, n < len(query) - 4)
         with self.assertRaises(NeedData):
             dns.DNS(struct.pack("!6H", 0, 0, 1025, 0, 0, 0))
-        complete = struct.pack("!6H", 0, 0, 1025, 0, 0, 0) + b"\0\0\1\0\1" * 1025
-        with self.assertRaises(dns.ParseLimitError) as result:
-            dns.DNS(complete)
-        self.assertIsInstance(result.exception, octetrail.UnpackError)
-        self.assertIsInstance(result.exception, ValueError)
-        self.assertIsInstance(result.exception, dns.LimitError)
         with self.assertRaises(TypeError):
-            dns.DNS(bytearray(query))
+            dns.DNS("text")
 
-    def test_known_name_rdata_rebases_when_question_layout_changes(self):
+    def test_rdata_slices_and_trailing_bytes_follow_dpkt(self):
+        case = next(c for c in F.cases() if c["id"] == "rr-1")
+        wire = bytes.fromhex(case["wire"])
+        short = dns.DNS(wire[:-1])
+        self.assertEqual((short.an[0].rlen, short.an[0].rdata), (4, wire[-4:-1]))
+        self.assertEqual(short.an[0].ip, wire[-4:-1])
+        message = dns.DNS(wire + b"tail")
+        self.assertEqual(message.data, b"")
+        self.assertEqual(bytes(message), wire)
+        message.data = b"ignored"
+        self.assertEqual(bytes(message), wire)
+        with self.assertRaises(octetrail.UnpackError):
+            dns.DNS(F.header([0, 1, 0, 0]) + b"\0" + struct.pack("!HHIH", 99, 1, 0, 0))
+
+    def test_parsed_records_repack_their_raw_rdata(self):
         case = next(c for c in F.cases() if c["id"] == "rr-5")
         message = dns.DNS(bytes.fromhex(case["wire"]))
         message.qd[0].name = "another.example"
+        message.an[0].cname = "ignored.example"
         wire = F.header([1, 1, 0, 0]) + b"\x07another\x07example\0" + struct.pack("!HH", 5, 1)
-        wire += b"\x04note\xc0\x14" + struct.pack("!HHIH", 5, 1, 60, 8) + b"\x05alias\xc0\x14"
+        wire += b"\x04note\xc0\x14" + struct.pack("!HHIH", 5, 1, 60, 8) + b"\x05alias\xc0\x11"
         self.assertEqual(bytes(message), wire)
-        self.assertEqual(dns.DNS(wire).an[0].cname, "alias.example")
-        message.an[0].rdata = b"new raw override"
-        with self.assertRaises(PackError):
-            bytes(message)
+        message.an[0].rdata = b""
+        message.an[0].cname = "alias.example"
+        rebuilt = wire[:-8] + b"\x05alias\xc0\x14"
+        self.assertEqual(bytes(message), rebuilt)
+        self.assertEqual(dns.DNS(rebuilt).an[0].cname, "alias.example")
 
-    def test_addresses_keep_raw_precedence_and_opaque_bytes_stay_exact(self):
+    def test_addresses_and_opaque_records(self):
         case = next(c for c in F.cases() if c["id"] == "rr-1")
         message = dns.DNS(bytes.fromhex(case["wire"]))
         message.an[0].ip = bytes.fromhex("c000020a")
         self.assertEqual(bytes(message).hex(), case["wire"])
         message.an[0].rdata = b""
         self.assertEqual(dns.DNS(bytes(message)).an[0].ip, bytes.fromhex("c000020a"))
-        for kind in (65280, 65281, 10, 41):
+        for kind in (10, 41):
             case = next(c for c in F.cases() if c["id"] == "rr-" + str(kind))
-            p = dns.DNS(bytes.fromhex(case["wire"]))
-            self.assertEqual(bytes(p).hex(), case["wire"])
+            self.assertEqual(bytes(dns.DNS(bytes.fromhex(case["wire"]))).hex(), case["wire"])
+        self.assertEqual(bytes(dns.DNS(an=[dns.DNS.RR(type=dns.DNS_A, rdata=b"x")]))[-1:], b"x")
         with self.assertRaises(PackError):
-            bytes(dns.DNS(an=[dns.DNS.RR(type=dns.DNS_A, rdata=b"x")]))
+            bytes(dns.DNS(an=[dns.DNS.RR(type=65280)]))
+        with self.assertRaises(AttributeError):
+            bytes(dns.DNS(an=[dns.DNS.RR(type=dns.DNS_A)]))
 
-    def test_utf8_text_mutations_and_unsupported_binary_text(self):
+    def test_mx_preference_is_a_tuple_as_in_dpkt(self):
+        case = next(c for c in F.cases() if c["id"] == "rr-15")
+        message = dns.DNS(bytes.fromhex(case["wire"]))
+        self.assertEqual(message.an[0].preference, (10,))
+        message.an[0].rdata = b""
+        self.assertEqual(bytes(message).hex(), case["wire"])
+        message.an[0].preference = 20
+        self.assertEqual(dns.DNS(bytes(message)).an[0].preference, (20,))
+
+    def test_utf8_names_and_text(self):
         message = dns.DNS(
             qd=[dns.DNS.Q(name="café.example")],
-            an=[dns.DNS.RR(name="", type=dns.DNS_TXT, text=["café"])],
+            an=[dns.DNS.RR(name="", type=dns.DNS_TXT, text=["café", b"note"])],
         )
         parsed = dns.DNS(bytes(message))
         self.assertEqual(parsed.qd[0].name, "café.example")
-        self.assertEqual(parsed.an[0].text, ["café"])
-        parsed.an[0].text.append("note")
-        self.assertEqual(dns.DNS(bytes(parsed)).an[0].text, ["café", "note"])
-        with self.assertRaises(PackError):
-            bytes(dns.DNS(an=[dns.DNS.RR(type=dns.DNS_TXT, text=[b"\xff"])]))
-        with self.assertRaises(PackError):
-            bytes(dns.DNS(an=[dns.DNS.RR(type=dns.DNS_HINFO, text=["one"])]))
+        self.assertEqual(parsed.an[0].text, ["café", "note"])
+        for raw in (
+            b"\x02\xff\xfe\0\0\1\0\1",
+            b"\0" + struct.pack("!HHIH", 16, 1, 0, 2) + b"\x01\xff",
+        ):
+            counts = [1, 0, 0, 0] if raw[0] else [0, 1, 0, 0]
+            with self.assertRaises(octetrail.UnpackError):
+                dns.DNS(F.header(counts) + raw)
         with self.assertRaises(PackError):
             bytes(dns.DNS(an=[dns.DNS.RR(type=dns.DNS_TXT, text=["x" * 256])]))
-        with self.assertRaises(dns.LimitError):
-            bytes(dns.DNS(an=[dns.DNS.RR(type=dns.DNS_TXT, text=["x" * 255] * 257)]))
+        with self.assertRaises(PackError):
+            bytes(dns.DNS(qd=[dns.DNS.Q(name=b"bytes")]))
+
+    def test_module_name_helpers(self):
+        pointers = {}
+        self.assertEqual(dns.pack_name("a.b", 12, pointers), b"\x01a\x01b\x00")
+        self.assertEqual(pointers, {b"A.B.": 12, b"B.": 14})
+        self.assertEqual(dns.pack_name("x.A.b", 30, pointers), b"\x01x\xc0\x0c")
+        self.assertEqual(pointers[b"X.A.B."], 30)
+        self.assertEqual(dns.unpack_name(b"\0\x01b\xc0\x00", 1), ("b", 5))
+        with self.assertRaises(NeedData):
+            dns.unpack_name(b"\x01a", 0)
+        with self.assertRaises(octetrail.UnpackError):
+            dns.unpack_name(b"\xc0\x00", 0)
+        self.assertEqual((dns.DNS_RCODE_YXDOMAIN, dns.DNS_RCODE_NOTZONE), (6, 10))
 
     def test_header_counts_flags_and_independent_defaults(self):
         a, b = dns.DNS(), dns.DNS()
@@ -132,7 +170,7 @@ class DnsTests(unittest.TestCase):
                 len(q)
         with self.assertRaises(PackError):
             bytes(dns.DNS(id=65536))
-        with self.assertRaises(PackError):
+        with self.assertRaises(AttributeError):
             bytes(dns.DNS(an=[dns.DNS.RR(type=dns.DNS_MX)]))
         with self.assertRaises(TypeError):
             bytes(dns.DNS(qd=[object()]))

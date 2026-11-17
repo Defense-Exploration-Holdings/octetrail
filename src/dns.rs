@@ -1,40 +1,64 @@
-//! Bounded offline DNS messages, names and common resource records. No transport I/O.
+//! Offline DNS messages, names and common resource records, parsed and packed the
+//! way dpkt 1.9.8 does. No transport I/O.
 
 use std::collections::HashMap;
 use std::fmt;
 
-pub const MAX_MESSAGE: usize = 65535;
-pub const MAX_RECORDS: usize = 1024;
-// A name has at most 127 one-byte labels (two charges each), one root
-// and MAX_POINTERS pointer charges. Three names per record cover SOA;
-// one extra charge per record and one per possible text byte cover the rest.
-pub const MAX_STEPS: usize = MAX_RECORDS * (3 * (255 + MAX_POINTERS) + 1) + MAX_MESSAGE;
-pub const MAX_WORK_BYTES: usize = 4 * 1024 * 1024;
-pub const MAX_POINTERS: usize = 128;
+/// Name loop iterations, records and text chunks one parse may take. Compression
+/// pointers must point strictly backwards, so every name ends, but a crafted
+/// message can still chain thousands of pointers per name.
+pub const MAX_STEPS: usize = 1 << 24;
+/// Decoded name and text bytes one parse may produce.
+pub const MAX_WORK_BYTES: usize = 64 * 1024 * 1024;
 
-#[derive(Debug, Eq, PartialEq)]
+pub const DNS_A: u16 = 1;
+pub const DNS_NS: u16 = 2;
+pub const DNS_CNAME: u16 = 5;
+pub const DNS_SOA: u16 = 6;
+pub const DNS_NULL: u16 = 10;
+pub const DNS_PTR: u16 = 12;
+pub const DNS_HINFO: u16 = 13;
+pub const DNS_MX: u16 = 15;
+pub const DNS_TXT: u16 = 16;
+pub const DNS_AAAA: u16 = 28;
+pub const DNS_SRV: u16 = 33;
+pub const DNS_OPT: u16 = 41;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Error {
-    Truncated,
-    Name,
-    Rdata,
+    /// The header is shorter than twelve bytes, or a name runs past the end.
+    NeedData,
+    /// A fixed-size field is cut short (a `struct.error` in dpkt).
+    ShortField,
+    /// A compression pointer does not point before the current name.
+    Pointer,
+    /// The labels of a name add up to more than 255 bytes.
+    NameLength,
+    /// A label length byte uses the reserved 0x40 or 0x80 forms.
+    LabelType(u8),
+    /// A name or text string is not UTF-8.
     Encoding,
+    /// The record type has no decoder in dpkt.
+    UnsupportedType(u16),
+    /// A packing input cannot be represented.
+    Pack(&'static str),
     Limit,
     Allocation,
 }
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Self::Truncated => "incomplete DNS message field",
-                Self::Name => "unsupported or inconsistent DNS name",
-                Self::Rdata => "inconsistent DNS resource data",
-                Self::Encoding => "DNS textual field requires UTF-8",
-                Self::Limit => "DNS size or work limit exceeded",
-                Self::Allocation => "cannot allocate DNS output",
-            }
-        )
+        match self {
+            Self::NeedData => write!(f, "incomplete DNS message"),
+            Self::ShortField => write!(f, "invalid DNS: truncated field"),
+            Self::Pointer => write!(f, "Invalid label compression pointer"),
+            Self::NameLength => write!(f, "name longer than 255 bytes"),
+            Self::LabelType(n) => write!(f, "Invalid label length {n:02x}"),
+            Self::Encoding => write!(f, "DNS textual field requires UTF-8"),
+            Self::UnsupportedType(kind) => write!(f, "RR type {kind} is not supported"),
+            Self::Pack(reason) => write!(f, "{reason}"),
+            Self::Limit => write!(f, "DNS work limit exceeded"),
+            Self::Allocation => write!(f, "cannot allocate DNS output"),
+        }
     }
 }
 impl std::error::Error for Error {}
@@ -57,74 +81,77 @@ impl Budget {
     }
 }
 
-fn take<'a>(data: &'a [u8], offset: &mut usize, n: usize, end: usize) -> Result<&'a [u8], Error> {
-    let next = offset.checked_add(n).ok_or(Error::Limit)?;
-    if next > end || next > data.len() {
-        return Err(Error::Truncated);
+/// `n` bytes at `offset`, or `ShortField` when fewer remain.
+fn fixed(data: &[u8], offset: usize, n: usize) -> Result<&[u8], Error> {
+    match offset.checked_add(n) {
+        Some(end) if end <= data.len() => Ok(&data[offset..end]),
+        _ => Err(Error::ShortField),
     }
-    let out = &data[*offset..next];
-    *offset = next;
-    Ok(out)
 }
-fn u16_at(data: &[u8], offset: &mut usize, end: usize) -> Result<u16, Error> {
-    let b = take(data, offset, 2, end)?;
-    Ok(u16::from_be_bytes([b[0], b[1]]))
+fn be16(b: &[u8]) -> u16 {
+    u16::from_be_bytes([b[0], b[1]])
 }
-fn u32_at(data: &[u8], offset: &mut usize, end: usize) -> Result<u32, Error> {
-    let b = take(data, offset, 4, end)?;
-    Ok(u32::from_be_bytes(b.try_into().expect("fixed field")))
+fn be32(b: &[u8]) -> u32 {
+    u32::from_be_bytes([b[0], b[1], b[2], b[3]])
+}
+/// `data[start..start + n]`, clamped to the bytes present like a Python slice.
+fn slice(data: &[u8], start: usize, n: usize) -> &[u8] {
+    let start = start.min(data.len());
+    &data[start..start.saturating_add(n).min(data.len())]
 }
 
-fn name(data: &[u8], offset: &mut usize, end: usize, budget: &mut Budget) -> Result<String, Error> {
-    let mut position = *offset;
-    let mut ceiling = *offset;
-    let mut resume = None;
-    let mut hops = 0;
+/// Decode a possibly compressed name at `offset`, as dpkt's `unpack_name` does.
+/// Returns the name and the offset just past it in the original position.
+pub fn unpack_name(data: &[u8], offset: usize) -> Result<(String, usize), Error> {
+    name(data, offset, &mut Budget::new())
+}
+
+fn name(data: &[u8], mut offset: usize, budget: &mut Budget) -> Result<(String, usize), Error> {
     let mut out = Vec::new();
-    let mut wire_len = 1usize;
+    let mut saved = None;
+    let mut start = offset;
+    let mut length = 0usize;
+    let mut labels = 0usize;
     loop {
-        budget.charge(1)?;
-        let boundary = if resume.is_some() { data.len() } else { end };
-        let head = take(data, &mut position, 1, boundary)?[0];
-        if head == 0 {
-            if resume.is_none() {
-                *offset = position
-            }
+        budget.charge(0)?;
+        let Some(&n) = data.get(offset) else {
+            return Err(Error::NeedData);
+        };
+        if n == 0 {
+            offset += 1;
             break;
         }
-        if head & 0xc0 == 0xc0 {
-            let low = take(data, &mut position, 1, boundary)?[0];
-            let target = (usize::from(head & 63) << 8) | usize::from(low);
-            if target >= ceiling {
-                return Err(Error::Name);
+        match n & 0xc0 {
+            0xc0 => {
+                let target = usize::from(be16(fixed(data, offset, 2)?) & 0x3fff);
+                if target >= start {
+                    return Err(Error::Pointer);
+                }
+                offset += 2;
+                saved.get_or_insert(offset);
+                start = target;
+                offset = target;
             }
-            hops += 1;
-            if hops > MAX_POINTERS {
-                return Err(Error::Limit);
+            0 => {
+                offset += 1;
+                let label = slice(data, offset, usize::from(n));
+                length += usize::from(n) + 1;
+                if length > 255 {
+                    return Err(Error::NameLength);
+                }
+                budget.charge(label.len() + 1)?;
+                if labels > 0 {
+                    out.push(b'.');
+                }
+                out.extend_from_slice(label);
+                labels += 1;
+                offset += usize::from(n);
             }
-            if resume.is_none() {
-                resume = Some(position);
-                *offset = position
-            }
-            ceiling = target;
-            position = target;
-            continue;
+            _ => return Err(Error::LabelType(n)),
         }
-        if head & 0xc0 != 0 {
-            return Err(Error::Name);
-        }
-        let label = take(data, &mut position, usize::from(head), boundary)?;
-        wire_len += label.len() + 1;
-        if wire_len > 255 || label.contains(&b'.') {
-            return Err(Error::Name);
-        }
-        budget.charge(label.len())?;
-        if !out.is_empty() {
-            out.push(b'.')
-        }
-        out.extend_from_slice(label);
     }
-    String::from_utf8(out).map_err(|_| Error::Encoding)
+    let name = String::from_utf8(out).map_err(|_| Error::Encoding)?;
+    Ok((name, saved.unwrap_or(offset)))
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -134,15 +161,22 @@ pub struct Question {
     pub class: u16,
 }
 
+/// A parsed resource record. `raw` is the RDATA slice, clamped to the message
+/// like dpkt's `rdata`; `rlen` is the declared length.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Record<'a> {
     pub name: String,
     pub kind: u16,
     pub class: u16,
     pub ttl: u32,
+    pub rlen: u16,
     pub raw: &'a [u8],
+    /// Decoded names: NS, CNAME, PTR and MX one, SOA two, SRV one.
     pub names: Vec<String>,
+    /// MX preference; SOA serial, refresh, retry, expire, minimum; SRV priority,
+    /// weight, port.
     pub numbers: Vec<u32>,
+    /// TXT and HINFO character strings.
     pub text: Vec<String>,
 }
 
@@ -152,7 +186,6 @@ pub struct Message<'a> {
     pub flags: u16,
     pub questions: Vec<Question>,
     pub sections: [Vec<Record<'a>>; 3],
-    pub trailing: &'a [u8],
 }
 
 fn record<'a>(
@@ -160,131 +193,174 @@ fn record<'a>(
     offset: &mut usize,
     budget: &mut Budget,
 ) -> Result<Record<'a>, Error> {
-    let owner = name(data, offset, data.len(), budget)?;
-    let kind = u16_at(data, offset, data.len())?;
-    let class = u16_at(data, offset, data.len())?;
-    let ttl = u32_at(data, offset, data.len())?;
-    let size = usize::from(u16_at(data, offset, data.len())?);
-    let start = *offset;
-    let raw = take(data, offset, size, data.len())?;
-    let end = *offset;
-    let mut position = start;
+    let (owner, next) = name(data, *offset, budget)?;
+    let fields = fixed(data, next, 10)?;
+    let kind = be16(&fields[..2]);
+    let start = next + 10;
+    let rlen = be16(&fields[8..]);
+    let raw = slice(data, start, usize::from(rlen));
     let mut rr = Record {
         name: owner,
         kind,
-        class,
-        ttl,
+        class: be16(&fields[2..4]),
+        ttl: be32(&fields[4..8]),
+        rlen,
         raw,
         names: Vec::new(),
         numbers: Vec::new(),
         text: Vec::new(),
     };
     match kind {
-        1 if size != 4 => return Err(Error::Rdata),
-        28 if size != 16 => return Err(Error::Rdata),
-        2 | 5 | 12 => rr.names.push(name(data, &mut position, end, budget)?),
-        15 => {
-            rr.numbers
-                .push(u32::from(u16_at(data, &mut position, end)?));
-            rr.names.push(name(data, &mut position, end, budget)?)
+        DNS_A | DNS_AAAA | DNS_NULL | DNS_OPT => {}
+        DNS_NS | DNS_CNAME | DNS_PTR => rr.names.push(name(data, start, budget)?.0),
+        DNS_SOA => {
+            let (mname, at) = name(data, start, budget)?;
+            let (rname, at) = name(data, at, budget)?;
+            rr.names = vec![mname, rname];
+            let numbers = fixed(data, at, 20)?;
+            rr.numbers = numbers.chunks_exact(4).map(be32).collect();
         }
-        6 => {
-            rr.names.push(name(data, &mut position, end, budget)?);
-            rr.names.push(name(data, &mut position, end, budget)?);
-            for _ in 0..5 {
-                rr.numbers.push(u32_at(data, &mut position, end)?)
+        DNS_MX => {
+            rr.numbers.push(u32::from(be16(fixed(raw, 0, 2)?)));
+            rr.names.push(name(data, start + 2, budget)?.0);
+        }
+        DNS_SRV => {
+            let numbers = fixed(raw, 0, 6)?;
+            rr.numbers = numbers
+                .chunks_exact(2)
+                .map(|b| u32::from(be16(b)))
+                .collect();
+            rr.names.push(name(data, start + 6, budget)?.0);
+        }
+        DNS_TXT | DNS_HINFO => {
+            let mut rest = raw;
+            while let Some(&n) = rest.first() {
+                let chunk = slice(rest, 1, usize::from(n));
+                budget.charge(chunk.len())?;
+                let text = std::str::from_utf8(chunk).map_err(|_| Error::Encoding)?;
+                rr.text.push(text.to_owned());
+                rest = slice(rest, 1 + usize::from(n), usize::MAX);
             }
         }
-        33 => {
-            for _ in 0..3 {
-                rr.numbers
-                    .push(u32::from(u16_at(data, &mut position, end)?))
-            }
-            rr.names.push(name(data, &mut position, end, budget)?)
-        }
-        13 | 16 => {
-            while position < end {
-                let n = usize::from(take(data, &mut position, 1, end)?[0]);
-                budget.charge(n + 1)?;
-                let bytes = take(data, &mut position, n, end)?;
-                rr.text
-                    .push(String::from_utf8(bytes.to_vec()).map_err(|_| Error::Encoding)?);
-            }
-            if kind == 13 && rr.text.len() != 2 {
-                return Err(Error::Rdata);
-            }
-        }
-        _ => position = end,
+        _ => return Err(Error::UnsupportedType(kind)),
     }
-    if position != end {
-        return Err(Error::Rdata);
-    }
+    *offset = start + usize::from(rlen);
     Ok(rr)
 }
 
 impl<'a> Message<'a> {
+    /// Parse a message. Trailing bytes after the declared sections are ignored,
+    /// as in dpkt.
     pub fn parse(data: &'a [u8]) -> Result<Self, Error> {
-        if data.len() > MAX_MESSAGE {
-            return Err(Error::Limit);
-        }
-        let mut offset = 0;
-        let end = data.len();
-        let id = u16_at(data, &mut offset, end)?;
-        let flags = u16_at(data, &mut offset, end)?;
-        let mut counts = [0usize; 4];
-        for n in &mut counts {
-            *n = usize::from(u16_at(data, &mut offset, end)?)
-        }
-        // Reject impossible section sizes before count limits or reservations.
-        // Even a root question needs 5 bytes; a root owner and RR header need 11.
-        let minimum = counts[0] * 5 + counts[1..].iter().sum::<usize>() * 11;
-        if minimum > end - offset {
-            return Err(Error::Truncated);
-        }
-        if counts.iter().sum::<usize>() > MAX_RECORDS {
-            return Err(Error::Limit);
-        }
+        let header = data.get(..12).ok_or(Error::NeedData)?;
+        let count = |i: usize| usize::from(be16(&header[4 + 2 * i..]));
         let mut budget = Budget::new();
+        let mut offset = 12;
+        // Each question takes at least five bytes and each record eleven, so the
+        // lists only grow with input that is present.
         let mut questions = Vec::new();
-        questions
-            .try_reserve_exact(counts[0])
-            .map_err(|_| Error::Allocation)?;
-        for _ in 0..counts[0] {
-            let name = name(data, &mut offset, end, &mut budget)?;
-            let kind = u16_at(data, &mut offset, end)?;
-            let class = u16_at(data, &mut offset, end)?;
-            questions.push(Question { name, kind, class })
+        for _ in 0..count(0) {
+            budget.charge(0)?;
+            let (name, next) = name(data, offset, &mut budget)?;
+            let fields = fixed(data, next, 4)?;
+            questions.push(Question {
+                name,
+                kind: be16(&fields[..2]),
+                class: be16(&fields[2..]),
+            });
+            offset = next + 4;
         }
         let mut sections: [Vec<Record<'a>>; 3] = std::array::from_fn(|_| Vec::new());
-        for (section, count) in sections.iter_mut().zip(&counts[1..]) {
-            section
-                .try_reserve_exact(*count)
-                .map_err(|_| Error::Allocation)?;
-            for _ in 0..*count {
-                budget.charge(1)?;
-                section.push(record(data, &mut offset, &mut budget)?)
+        for (index, section) in sections.iter_mut().enumerate() {
+            for _ in 0..count(index + 1) {
+                budget.charge(0)?;
+                section.push(record(data, &mut offset, &mut budget)?);
             }
         }
         Ok(Self {
-            id,
-            flags,
+            id: be16(header),
+            flags: be16(&header[2..]),
             questions,
             sections,
-            trailing: &data[offset..],
         })
     }
 }
 
+/// Resource data to pack for one record.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Rdata<'a> {
+    /// Bytes copied as they are: a nonempty `rdata`, an address or OPT's empty data.
+    Raw(&'a [u8]),
+    /// NS, CNAME or PTR.
+    Name(String),
+    Soa {
+        mname: String,
+        rname: String,
+        numbers: [u32; 5],
+    },
+    Mx {
+        preference: u16,
+        name: String,
+    },
+    Srv {
+        numbers: [u16; 3],
+        name: String,
+    },
+    /// TXT or HINFO character strings.
+    Text(Vec<Vec<u8>>),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Entry<'a> {
+    pub name: String,
+    pub kind: u16,
+    pub class: u16,
+    pub ttl: u32,
+    pub rdata: Rdata<'a>,
+}
+
+/// dpkt's `pack_name`: split on dots, compress with ASCII case-folded suffixes
+/// found in `pointers`, and remember new suffixes that start below 0xc000.
+/// `offset` is where the name will be written in the message.
+pub fn pack_name(
+    value: &str,
+    offset: usize,
+    pointers: &mut HashMap<Vec<u8>, usize>,
+) -> Result<Vec<u8>, Error> {
+    let mut labels: Vec<&[u8]> = if value.is_empty() {
+        Vec::new()
+    } else {
+        value.as_bytes().split(|b| *b == b'.').collect()
+    };
+    labels.push(b"");
+    let mut out = Vec::new();
+    for index in 0..labels.len() {
+        let key = labels[index..].join(&b'.').to_ascii_uppercase();
+        if let Some(&pointer) = pointers.get(&key) {
+            let pointer = u16::try_from(0xc000 | pointer)
+                .map_err(|_| Error::Pack("DNS compression pointer out of range"))?;
+            out.extend_from_slice(&pointer.to_be_bytes());
+            return Ok(out);
+        }
+        let at = offset + out.len();
+        if key.len() > 1 && at < 0xc000 {
+            pointers.insert(key, at);
+        }
+        let label = labels[index];
+        let n =
+            u8::try_from(label.len()).map_err(|_| Error::Pack("DNS label exceeds 255 bytes"))?;
+        out.push(n);
+        out.extend_from_slice(label);
+    }
+    Ok(out)
+}
+
 struct Writer {
     out: Vec<u8>,
-    pointers: HashMap<Vec<u8>, u16>,
-    budget: Budget,
+    pointers: HashMap<Vec<u8>, usize>,
 }
 impl Writer {
     fn append(&mut self, raw: &[u8]) -> Result<(), Error> {
-        if self.out.len().checked_add(raw.len()).ok_or(Error::Limit)? > MAX_MESSAGE {
-            return Err(Error::Limit);
-        }
         self.out
             .try_reserve(raw.len())
             .map_err(|_| Error::Allocation)?;
@@ -292,117 +368,75 @@ impl Writer {
         Ok(())
     }
     fn name(&mut self, value: &str) -> Result<(), Error> {
-        if value.is_empty() {
-            return self.append(&[0]);
-        }
-        if value.len() > 253 {
-            return Err(Error::Name);
-        }
-        let labels: Vec<&[u8]> = value.as_bytes().split(|b| *b == b'.').collect();
-        if labels.iter().any(|x| x.is_empty() || x.len() > 63) {
-            return Err(Error::Name);
-        }
-        for index in 0..labels.len() {
-            let suffix = labels[index..].join(&b'.');
-            self.budget.charge(suffix.len() + 1)?;
-            let key = suffix.to_ascii_uppercase();
-            if let Some(pointer) = self.pointers.get(&key) {
-                return self.append(&(0xc000 | pointer).to_be_bytes());
-            }
-            if self.out.len() < 0x4000 {
-                self.pointers.insert(key, self.out.len() as u16);
-            }
-            self.append(&[labels[index].len() as u8])?;
-            self.append(labels[index])?;
-        }
-        self.append(&[0])
+        let raw = pack_name(value, self.out.len(), &mut self.pointers)?;
+        self.append(&raw)
     }
-    fn record(&mut self, rr: &Record<'_>) -> Result<(), Error> {
+    fn record(&mut self, rr: &Entry<'_>) -> Result<(), Error> {
         self.name(&rr.name)?;
         self.append(&rr.kind.to_be_bytes())?;
         self.append(&rr.class.to_be_bytes())?;
         self.append(&rr.ttl.to_be_bytes())?;
-        let length_position = self.out.len();
+        let length_at = self.out.len();
         self.append(&[0, 0])?;
         let start = self.out.len();
-        let counts = match rr.kind {
-            2 | 5 | 12 => (1, 0),
-            15 => (1, 1),
-            6 => (2, 5),
-            33 => (1, 3),
-            _ => (0, 0),
-        };
-        if rr.names.len() != counts.0 || rr.numbers.len() != counts.1 {
-            return Err(Error::Rdata);
-        }
-        match rr.kind {
-            1 | 28 => {
-                if rr.raw.len() != if rr.kind == 1 { 4 } else { 16 } {
-                    return Err(Error::Rdata);
-                }
-                self.append(rr.raw)?
-            }
-            2 | 5 | 12 => self.name(&rr.names[0])?,
-            15 | 33 => {
-                for value in &rr.numbers {
-                    self.append(
-                        &u16::try_from(*value)
-                            .map_err(|_| Error::Rdata)?
-                            .to_be_bytes(),
-                    )?
-                }
-                self.name(&rr.names[0])?
-            }
-            6 => {
-                self.name(&rr.names[0])?;
-                self.name(&rr.names[1])?;
-                for n in &rr.numbers {
+        match &rr.rdata {
+            Rdata::Raw(raw) => self.append(raw)?,
+            Rdata::Name(name) => self.name(name)?,
+            Rdata::Soa {
+                mname,
+                rname,
+                numbers,
+            } => {
+                self.name(mname)?;
+                self.name(rname)?;
+                for n in numbers {
                     self.append(&n.to_be_bytes())?
                 }
             }
-            13 | 16 => {
-                if rr.kind == 13 && rr.text.len() != 2 {
-                    return Err(Error::Rdata);
+            Rdata::Mx { preference, name } => {
+                self.append(&preference.to_be_bytes())?;
+                self.name(name)?
+            }
+            Rdata::Srv { numbers, name } => {
+                for n in numbers {
+                    self.append(&n.to_be_bytes())?
                 }
-                for chunk in &rr.text {
-                    let n = u8::try_from(chunk.len()).map_err(|_| Error::Rdata)?;
-                    self.budget.charge(chunk.len() + 1)?;
+                self.name(name)?
+            }
+            Rdata::Text(chunks) => {
+                for chunk in chunks {
+                    let n = u8::try_from(chunk.len())
+                        .map_err(|_| Error::Pack("DNS text string exceeds 255 bytes"))?;
                     self.append(&[n])?;
-                    self.append(chunk.as_bytes())?
+                    self.append(chunk)?
                 }
             }
-            _ => self.append(rr.raw)?,
         }
-        let n = u16::try_from(self.out.len() - start).map_err(|_| Error::Limit)?;
-        self.out[length_position..length_position + 2].copy_from_slice(&n.to_be_bytes());
+        let n = u16::try_from(self.out.len() - start)
+            .map_err(|_| Error::Pack("DNS rdata exceeds 65535 bytes"))?;
+        self.out[length_at..length_at + 2].copy_from_slice(&n.to_be_bytes());
         Ok(())
     }
 }
 
 pub fn header(id: u16, flags: u16, counts: [usize; 4]) -> Result<[u8; 12], Error> {
-    if counts
-        .iter()
-        .try_fold(0usize, |a, b| a.checked_add(*b))
-        .ok_or(Error::Limit)?
-        > MAX_RECORDS
-    {
-        return Err(Error::Limit);
-    }
     let mut out = [0; 12];
     out[..2].copy_from_slice(&id.to_be_bytes());
     out[2..4].copy_from_slice(&flags.to_be_bytes());
     for (index, n) in counts.iter().enumerate() {
-        out[4 + index * 2..6 + index * 2].copy_from_slice(&(*n as u16).to_be_bytes())
+        let n = u16::try_from(*n).map_err(|_| Error::Pack("DNS section has over 65535 entries"))?;
+        out[4 + index * 2..6 + index * 2].copy_from_slice(&n.to_be_bytes())
     }
     Ok(out)
 }
 
+/// Pack a message as dpkt's `DNS.__bytes__` does. The pointer dictionary is
+/// rebuilt from the names written here; raw RDATA is copied without adding to it.
 pub fn encode(
     id: u16,
     flags: u16,
     questions: &[Question],
-    sections: [&[Record<'_>]; 3],
-    trailing: &[u8],
+    sections: [&[Entry<'_>]; 3],
 ) -> Result<Vec<u8>, Error> {
     let fixed = header(
         id,
@@ -417,7 +451,6 @@ pub fn encode(
     let mut writer = Writer {
         out: Vec::new(),
         pointers: HashMap::new(),
-        budget: Budget::new(),
     };
     writer.append(&fixed)?;
     for q in questions {
@@ -430,7 +463,6 @@ pub fn encode(
             writer.record(rr)?
         }
     }
-    writer.append(trailing)?;
     Ok(writer.out)
 }
 

@@ -1,121 +1,118 @@
-# Explicit offline DNS messages
+# DNS messages
 
-`octetrail.dns.DNS(bytes)` decodes one message payload. It does not open sockets,
-perform lookups, consume a TCP length prefix or change UDP/IP dispatch. Call it
-explicitly on bytes returned by the existing offline APIs.
+`octetrail.dns` parses and packs DNS messages the way dpkt 1.9.8 does, with the
+parser and packer in Rust. `dns.DNS(bytes)` decodes one message payload. It does
+not open sockets, perform lookups, consume a TCP length prefix or change UDP/IP
+dispatch, so call it on payload bytes you already have.
 
 ```python
 from octetrail import dns
 
-question = dns.DNS.Q(name="note.example", type=dns.DNS_A)
-query = dns.DNS(id=17, qd=[question])
+query = dns.DNS(id=17, qd=[dns.DNS.Q(name="note.example", type=dns.DNS_A)])
 decoded = dns.DNS(bytes(query))
 assert decoded.qd[0].name == "note.example"
 ```
 
-The mutable message surface is `id`, `op`, `qd`, `an`, `ns`, `ar` and `data`.
-Sections are independent lists of `DNS.Q` questions or `DNS.RR` records. Header
-counts are derived from those lists. The covered bit accessors are `qr`,
-`opcode`, `aa`, `tc`, `rd`, `ra`, `zero` and `rcode`; `ad` and `cd` are additional
-flag conveniences. `pack_hdr()` is a twelve-byte header/count convenience outside
-the measured dpkt equality surface; `bytes()` and `len()` use the complete
-serialized message. Standalone Q/RR lengths and unpacking remain
-unsupported because names depend on their message context.
+## Messages
 
-Questions have `name`, `type` and `cls`. Records also expose `ttl`, original
-`rlen`, and exact original `rdata`. The covered decoded fields are:
+A message has `id`, `op`, `qd`, `an`, `ns`, `ar` and `data`. The four sections are
+lists of `DNS.Q` questions and `DNS.RR` records, and the header counts are taken
+from their lengths when packing. The flag accessors are `qr`, `opcode`, `aa`, `tc`,
+`rd`, `ra`, `zero` and `rcode`, plus `ad` and `cd`. A new message has `op` set to
+`DNS_RD`. `len()` is the length of `bytes()`, and `pack_hdr()` returns the
+twelve-byte header.
 
-| Type | Decoded fields |
+Parsing stops after the declared sections. Any bytes after them are dropped and
+`data` is empty. `data` is never packed. These rules are the same as dpkt.
+
+## Questions and records
+
+Questions have `name`, `type` and `cls`. Records add `ttl`, `rlen` (the declared
+RDATA length) and `rdata`. `rdata` is the declared RDATA cut to the bytes that
+are actually present, so it can be shorter than `rlen`. Each type also gets the
+fields dpkt sets for it:
+
+| Type | Fields |
 | --- | --- |
-| A / AAAA | `ip` / `ip6` bytes, also retained in `rdata` |
+| A / AAAA | `ip` / `ip6`, the same bytes as `rdata` |
 | NS / CNAME / PTR | `nsname` / `cname` / `ptrname` |
-| MX | integer `preference`, `mxname` |
+| MX | `preference`, a one-item tuple as in dpkt, and `mxname` |
 | SOA | `mname`, `rname`, `serial`, `refresh`, `retry`, `expire`, `minimum` |
-| TXT / HINFO | `text`, a mutable list of UTF-8 strings |
+| TXT / HINFO | `text`, a list of strings |
 | SRV | `priority`, `weight`, `port`, `srvname` |
-| NULL | opaque `rdata`; `null` is its ASCII hex bytes |
-| OPT and unrecognized types | opaque `rdata`, without option/record interpretation |
+| NULL | `null`, the hex of `rdata` as ASCII bytes |
+| OPT | none |
 
-Names are UTF-8 text without a trailing dot or embedded dot inside a wire label.
-The empty string represents the root. There is no IDNA conversion. Text
-construction accepts UTF-8 strings or bytes; binary non-UTF-8 names/text remain
-outside this first slice. Address lengths must be exactly four or sixteen bytes.
-HINFO requires two strings. Structural truncation raises `NeedData`, unsupported
-name/RDATA layouts or encoding raise `UnpackError`, and packing invalid fields
-raises `PackError`. Missing structured record fields fail rather than becoming
-invented values. Numeric field widths are checked; opcode/rcode masking and
-truthy single-bit setters follow the covered dpkt behavior.
+Other record types raise `UnpackError` ("RR type N is not supported"), as in dpkt.
+Names in RDATA are read from the whole message, so a compressed name can end past
+the declared RDATA. SOA numbers are read from the message right after the two
+names. MX and SRV numbers come from `rdata`, which must hold them.
 
-## Compression, mutation and limits
+## Names
 
-Rust checks every field and name slice against the message/RDATA boundary.
-Compressed names use backward references, with a maximum of 128 pointer hops per
-name. Serialization rebuilds a deterministic compression dictionary, preserving
-the covered ordinary wire outputs and using only representable 14-bit offsets.
-Compression dictionary keys ignore ASCII case, as in dpkt; a repeated suffix
-with different case can take the spelling of its first occurrence.
-Like dpkt 1.9.8, serialization also compresses the target name of SRV records,
-which RFC 2782 says must not be compressed. Parsers commonly accept both forms;
-this matches dpkt byte for byte rather than the RFC.
-The name limit is 255 wire bytes, including the terminating root byte; labels
-are at most 63 bytes. Message bytes are limited to 65535, total questions and
-records to 1024 and charged work bytes to 4 MiB. The work-step budget is
-1,243,135, derived from three bounded names per record, two charges per label,
-128 pointer hops per name, a per-record charge and possible text bytes. Ordinary
-larger compressed responses fit this budget. Before any count-based allocation
-or record-count limit, the remaining bytes must fit at least five bytes per
-question and eleven per record; otherwise parsing raises `NeedData`.
-Parse budgets raise `dns.ParseLimitError`, a subclass of both `UnpackError` and
-the existing `dns.LimitError`/ValueError family. Existing catch styles therefore
-work. Serialization limits remain `dns.LimitError` and are not parse errors. These bounds are not total process-memory or wall-clock guarantees.
+Names are UTF-8 strings with labels joined by dots. The empty string is the root.
+A label that contains a dot byte is joined as it is. Compression pointers must
+point before the start of the name being read, so every name ends. The labels of
+one name may add up to at most 255 bytes, each label counted with its length
+byte. Names and text that are not UTF-8 raise `UnpackError`.
 
-Known name-bearing and text records serialize from decoded fields, rebuilding
-compression after mutations or layout changes. Their original `rdata` remains
-available for inspection. Raw overrides for these records are unsupported and
-raise `PackError`; supply structured fields instead. Unlike the references,
-changing parsed `.cname` or `.text` takes effect without clearing `.rdata` first.
-For A/AAAA, nonempty `rdata` takes precedence over `ip`/`ip6`, as in dpkt; clear
-it to serialize a changed address alias. For example, after parsing an A
-record, set `rr.ip = new_four_bytes` and `rr.rdata = b""` before `bytes(message)`.
-For AAAA use `rr.ip6` with sixteen bytes and likewise clear `rdata`. Merely
-editing either alias leaves the original captured address unchanged. This is
-intentional reference-compatible precedence, unlike the structured CNAME/text
-policy described above. Opaque NULL/OPT/unknown data is copied
-exactly and is never interpreted or rebased. Any format-specific embedded offsets
-inside an unknown record remain the caller's responsibility. The emitted RDATA
-length is derived from actual bytes; the inspected `rlen` attribute is not updated.
+`dns.unpack_name(buf, off)` and `dns.pack_name(name, off, label_ptrs)` are the
+module-level helpers dpkt has. `pack_name` splits the name on dots and writes
+each label as it is, without checking it. It reuses an entry of `label_ptrs` (upper-cased
+suffix bytes ending in a dot, mapped to offsets) when one matches. It also adds
+the suffixes it writes below offset 0xc000. A label over 255 bytes raises
+`PackError`.
 
-Trailing unconsumed bytes are retained in `DNS.data` and serialized, unlike the
-references, which discard them. Parsing fails as a whole on an incomplete
-declared section; it does not silently return a partial list.
+## Errors
 
-## Measured compatibility and exclusions
+The error classes follow dpkt:
 
-The [fixture driver](../tools/dns_differential.py) uses independently assembled
-benign messages and both hash-pinned dpkt references. It checks 22 messages,
-twelve constructors, header flag changes and two structured mutation sequences.
-Seventeen fixture cases are equal for declared fields, exact serialized output
-and length. Five explicit fixture differences cover two unknown RR types,
-trailing bytes, re-encoding originally uncompressed name RDATA, and parsed MX
-preference. Both pinned versions expose MX preference as a one-item tuple;
-OctetRail uses an integer. The separate mutation sequences record the structured
-field precedence difference described above. These outcomes are not normalized
-into parity claims.
+- `NeedData`: the message is shorter than twelve bytes, or a name runs past the
+  end of the message.
+- `UnpackError`:
+  - a fixed-size field is cut short (a question's type and class, a record's
+    ten fixed bytes, SOA numbers, or MX and SRV numbers inside `rdata`);
+  - a pointer does not point backwards;
+  - a name is too long;
+  - a label uses a reserved length form;
+  - the text is not UTF-8;
+  - the record type is unsupported.
+- `ParseLimitError`: a subclass of `UnpackError` and of `dns.LimitError`. It is
+  raised when parsing takes more than 16,777,216 name steps or decodes more than
+  64 MiB of names and text. Pointers must point backwards, but a crafted message
+  can still chain thousands of them, and this budget bounds that work. dpkt has
+  no such limit.
+
+## Packing
+
+`bytes()` packs as dpkt's `DNS.__bytes__` does. It writes the header, then each
+question and record owner name with fresh compression, then the resource data:
+
+- A nonempty `rdata` is copied as it is, for every type. A parsed record
+  therefore packs its original RDATA bytes. That includes any compression
+  pointers inside them, even if the names before them changed. To pack a
+  changed `cname`, `text`, `ip` or other field, set `rdata = b""` first.
+- With empty `rdata`, the typed fields are packed: `ip` or `ip6`, the names
+  (compressed), the numbers, or the text strings (str or bytes). OPT packs no
+  data. NULL and unknown types raise `PackError`. A missing field raises
+  `AttributeError`, as in dpkt.
+- `rdlen` is the length of the data written. `rlen` is not used.
+
+Integer fields out of range, names that are not strings, text over 255 bytes and
+RDATA over 65535 bytes raise `PackError`. Each section may hold 65535 entries.
+
+## Measured compatibility
+
+The private parity harness decodes dpkt-built messages and mutations of them with
+both libraries and compares the outcome class, the header fields and the packed
+bytes. Its seed messages cover every record type above, in all three sections.
+The [fixture driver](../tools/dns_differential.py) checks 22 hand-assembled
+messages, twelve constructors, header flag changes and raw RDATA precedence
+against dpkt 1.9.6 and 1.9.8:
 
 ```sh
 python3 tools/dns_differential.py --oracle-196 ORACLE196/bin/python --oracle-198 ORACLE198/bin/python --python INSTALLED_WHEEL/bin/python
 ```
 
-The driver requires both references and an installed candidate, runs isolated
-optimized probes, and verifies versions/module origins with explicit failures.
-Full exception messages, unusual name encodings, arbitrary Packet APIs,
-standalone RR wire APIs, EDNS option semantics, DNSSEC interpretation, TCP framing,
-stream reassembly and automatic transport dispatch are deferred. The exposed
-fields cover common DNS record data, but no downstream application support,
-dependency/import replacement, network service or broad DNS parity is claimed.
-The [explicit HTTP subset](http.md) and [passive TLS subset](tls.md) are separate.
-
-The review regression checks also compare a 768-record compressed NS response,
-two A/AAAA edit sequences and minimum-size/count decisions against both pins.
-The product retains its declared record cap while both references accept the
-covered complete 1025-question message. This resource difference is explicit.
+Exception messages can differ. TCP framing, EDNS option parsing, DNSSEC records
+and transport dispatch are not provided, and dpkt does not provide them either.
