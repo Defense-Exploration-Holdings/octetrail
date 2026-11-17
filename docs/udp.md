@@ -62,6 +62,8 @@ that resource-policy difference separately, including the 65535/65536 boundary;
 those cases are not counted as equal behavior. Parse and serialization enforce
 the cap before payload copying or native output allocation. `len(packet)` and
 `pack_hdr()` remain descriptive operations and do not enforce the payload cap.
+A UDP payload decoded from an IPv6 jumbo payload is not capped, on parsing or
+packing, so that IPv6 matches dpkt.
 
 Fewer than eight input bytes raise the public `NeedData` exception. Invalid
 unsigned field widths or ordinary scalar types raise `PackError` when packed.

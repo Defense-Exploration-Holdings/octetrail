@@ -1,6 +1,6 @@
 # Release notes
 
-## Unreleased
+## 0.4.0
 
 DNS now parses and packs the way dpkt 1.9.8 does:
 
@@ -28,6 +28,8 @@ HTTP now parses and packs the way dpkt 1.9.8 does:
 - Headers pack as they are, with list values as Python list text, and
   non-ASCII characters are dropped. Header names, values and lengths are no
   longer checked.
+- Header names are looked up in a hash map, so a message with many distinct
+  header names parses in linear time.
 - New: `http.Message`, `http.parse_headers` and `http.parse_body`. The size
   limits, `http.ParseLimitError`, `http.LimitError` and the `MAX_*` constants are
   removed.
@@ -44,7 +46,9 @@ IPv6 now parses and packs the way dpkt 1.9.8 does:
   objects with dpkt's fields, in `extension_hdrs` and `all_extension_headers`.
 - The payload is `plen` bytes, or everything when `plen` is 0, and a payload
   cut short is still passed to its protocol class. Any version is accepted.
-  Fragments after the first stay bytes.
+- When `nxt` is 44 and the last extension header has a nonzero `frag_off`, the
+  payload stays bytes. Otherwise it is decoded through `IP6.get_proto`,
+  including a fragment that follows another extension header.
 - When `nxt` is 44 and the last extension header is not a fragment header,
   `ip6.FragmentOffsetError` (an `UnpackError` and an `AttributeError`) is
   raised where dpkt raises `AttributeError`.
@@ -52,7 +56,11 @@ IPv6 now parses and packs the way dpkt 1.9.8 does:
   checksum without mapping 0 to `0xffff`. Checksums behind a routing header are
   computed too.
 - `IP6.get_proto` and `IP6.set_proto` choose payload classes. IPv4 and IPv6
-  payloads are decoded as well as TCP and UDP.
+  payloads are decoded as well as TCP and UDP. A UDP payload over 65535 bytes,
+  possible when `plen` is 0, is decoded as UDP as dpkt does, instead of raising
+  `udp.LimitError`.
+- `p[udp.UDP]`, `p[tcp.TCP]` and `p[ip.IP]` find those layers, and `udp.UDP in p`
+  tests for them, as in dpkt.
 - `ip6.ExtensionHeader`, `payload_status`, `fragmented`, `IP6_HDR_LEN`,
   `MAX_EXTENSIONS`, `MAX_EXTENSION_BYTES` and `ip6.LimitError` are removed, with
   the extension count and byte limits.

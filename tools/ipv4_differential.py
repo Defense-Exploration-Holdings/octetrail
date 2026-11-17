@@ -77,7 +77,7 @@ def main():
         validate(report, payload, report["version"])
     products = []
     for python in args.python:
-        report = probe(python, "octetrail", "0.3.1", payload)
+        report = probe(python, "octetrail", "0.4.0", payload)
         validate(report, payload, "1.9.8", True)
         products.append(report)
     common = [c for c in payload if c["status"] == "matching"]

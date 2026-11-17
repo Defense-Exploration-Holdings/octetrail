@@ -157,18 +157,18 @@ class UDPFixtureTests(unittest.TestCase):
                     return outside if name == target else real_import(name)
                 with patch("importlib.import_module", side_effect=load):
                     try:
-                        verify("octetrail", "0.3.1")
+                        verify("octetrail", "0.4.0")
                     except ValueError as error:
                         if "origin outside environment" not in str(error):
                             raise
                     else:
                         raise RuntimeError("outside origin accepted")
             distribution = SimpleNamespace(
-                version="0.3.1", locate_file=lambda path: sys.prefix + "/wrong-member.py"
+                version="0.4.0", locate_file=lambda path: sys.prefix + "/wrong-member.py"
             )
             with patch("importlib.metadata.distribution", return_value=distribution):
                 try:
-                    verify("octetrail", "0.3.1")
+                    verify("octetrail", "0.4.0")
                 except ValueError as error:
                     if "does not match distribution" not in str(error):
                         raise
@@ -176,7 +176,7 @@ class UDPFixtureTests(unittest.TestCase):
                     raise RuntimeError("wrong distribution origin accepted")
             with patch("importlib.util.find_spec", return_value=object()):
                 try:
-                    verify("octetrail", "0.3.1")
+                    verify("octetrail", "0.4.0")
                 except ValueError as error:
                     if "unexpected dpkt" not in str(error):
                         raise

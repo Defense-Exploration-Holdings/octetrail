@@ -104,6 +104,39 @@ class IPv6Tests(unittest.TestCase):
         finally:
             del ip6.IP6._protosw[253]
 
+    def test_jumbo_udp_payload(self):
+        for size in (65535, 65536, 200000):
+            datagram = struct.pack(">HHHH", 1000, 53, 0, 0x1234) + b"x" * (size - 8)
+            wire = F.base(17, datagram, plen=0)
+            packet = ip6.IP6(wire)
+            self.assertIsInstance(packet.data, udp.UDP)
+            self.assertIs(packet.udp, packet.data)
+            self.assertEqual((packet.data.sport, packet.data.sum), (1000, 0x1234))
+            self.assertEqual(len(packet.data.data), size - 8)
+            self.assertEqual(bytes(packet), wire)
+            self.assertIsInstance(ethernet.Ethernet(MAC + wire).data.data, udp.UDP)
+        packet.data.sum = 0
+        with self.assertRaises(struct.error):
+            bytes(packet)
+        with self.assertRaises(udp.LimitError):
+            udp.UDP(datagram)
+
+    def test_layer_lookup(self):
+        packet = ip6.IP6(case("udp"))
+        self.assertIs(packet[udp.UDP], packet.data)
+        self.assertIn(udp.UDP, packet)
+        self.assertNotIn(tcp.TCP, packet)
+        with self.assertRaises(KeyError):
+            packet[tcp.TCP]
+        packet = ip6.IP6(case("dpkt_tcp"))
+        self.assertIs(packet[tcp.TCP], packet.data)
+        self.assertNotIn(udp.UDP, packet)
+        inner = ip.IP(src=b"\n\0\0\1", dst=b"\n\0\0\2", p=17, data=udp.UDP(ulen=8))
+        packet = ip6.IP6(F.base(4, bytes(inner)))
+        self.assertIs(packet[ip.IP], packet.data)
+        self.assertIs(packet[udp.UDP], packet.data.data)
+        self.assertNotIn(ip6.IP6, packet)
+
     def test_errors_keep_the_headers_read(self):
         with self.assertRaisesRegex(NeedData, "got 39, 40 needed at least"):
             ip6.IP6(case("short_header"))

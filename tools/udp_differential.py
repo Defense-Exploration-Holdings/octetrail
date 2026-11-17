@@ -81,7 +81,7 @@ def main():
     for python, module, version in [
         (args.oracle_196, "dpkt", "1.9.6"),
         (args.oracle_198, "dpkt", "1.9.8"),
-        *((python, "octetrail", "0.3.1") for python in args.python),
+        *((python, "octetrail", "0.4.0") for python in args.python),
     ]:
         report = probe(python, module, version, payload)
         validate(report, payload, module, version, sys.flags.optimize)

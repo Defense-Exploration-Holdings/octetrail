@@ -131,18 +131,18 @@ class IPv4FixtureTests(unittest.TestCase):
                     return outside if name == target else real_import(name)
                 with patch("importlib.import_module", side_effect=load):
                     try:
-                        verify("octetrail", "0.3.1")
+                        verify("octetrail", "0.4.0")
                     except ValueError as error:
                         if str(error) != "provider outside venv":
                             raise
                     else:
                         raise RuntimeError("outside provider accepted")
             distribution = SimpleNamespace(
-                version="0.3.1", locate_file=lambda path: outside.__file__
+                version="0.4.0", locate_file=lambda path: outside.__file__
             )
             with patch("importlib.metadata.distribution", return_value=distribution):
                 try:
-                    verify("octetrail", "0.3.1")
+                    verify("octetrail", "0.4.0")
                 except ValueError as error:
                     if str(error) != "provider does not match installed distribution":
                         raise

@@ -51,7 +51,9 @@ The version is not checked.
 4. Otherwise the rest is decoded with `IP6.get_proto(p)`. TCP, UDP, IPv4 and
    IPv6 are decoded, and `.tcp`, `.udp`, `.ip` or `.ip6` is set. Other protocols,
    and payloads that raise `UnpackError`, stay bytes. `IP6.set_proto` adds a
-   class. dpkt also decodes ICMP, ICMPv6, IGMP, GRE, OSPF, PIM, VRRP, STP and
+   class. A UDP payload larger than 65535 bytes, possible when `plen` is 0, is
+   decoded as UDP without the standalone UDP size limit and packs back as it
+   is. dpkt also decodes ICMP, ICMPv6, IGMP, GRE, OSPF, PIM, VRRP, STP and
    SCTP, which OctetRail does not have yet.
 
 ## Errors

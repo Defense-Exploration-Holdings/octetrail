@@ -9,6 +9,7 @@ import struct
 from functools import partial
 from itertools import chain
 
+from . import ip, tcp, udp
 from .errors import Error, NeedData, PackError, UnpackError
 
 __all__ = [
@@ -120,7 +121,7 @@ class Packet(metaclass=_MetaPacket):
 
     def __getitem__(self, kls):
         dd = self.data
-        while isinstance(dd, Packet):
+        while isinstance(dd, _LAYERS):
             if dd.__class__ == kls:
                 return dd
             dd = dd.data
@@ -293,3 +294,8 @@ def in_cksum_done(s):
 def in_cksum(buf):
     """Return the Internet checksum of buf."""
     return in_cksum_done(in_cksum_add(0, buf))
+
+
+# Layers that layer lookup walks through. IPv4, TCP and UDP are not Packet
+# subclasses yet, but dpkt finds them, so they are walked as well.
+_LAYERS = (Packet, ip.IP, tcp.TCP, udp.UDP)
