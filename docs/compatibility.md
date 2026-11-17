@@ -65,6 +65,9 @@ The [GRE and PIM modules](gre-pim.md) parse and pack those packets the way
 dpkt 1.9.8 does, with no declared differences.
 The [IGMP and VRRP modules](igmp-vrrp.md) parse and pack those messages the way
 dpkt 1.9.8 does, with no declared differences.
+The [RADIUS, RTP, STUN and TPKT modules](radius-rtp-stun-tpkt.md) parse and
+pack those messages the way dpkt 1.9.8 does, except two declared differences
+for attribute lists cut off inside an attribute header.
 The [NTP, RIP, TFTP and HSRP modules](ntp-rip-tftp-hsrp.md) parse and pack
 those messages the way dpkt 1.9.8 does, except one declared difference for a
 TFTP request without a NUL.

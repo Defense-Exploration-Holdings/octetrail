@@ -2,13 +2,16 @@
 
 ## Unreleased
 
-NTP, RIP, TFTP and HSRP now parse and pack the way dpkt 1.9.8 does:
+RADIUS, RTP, STUN and TPKT now parse and pack the way dpkt 1.9.8 does:
 
-- New modules: `octetrail.ntp`, `octetrail.rip` with `RIP`, `RTE` and `Auth`,
-  `octetrail.tftp` and `octetrail.hsrp`, with dpkt's constants.
-- A TFTP request without a NUL after the file name raises
-  `tftp.RequestError`, an `UnpackError` and `IndexError` subclass, where dpkt
-  raises `IndexError`.
+- New modules: `octetrail.radius`, `octetrail.rtp`, `octetrail.stun` and
+  `octetrail.tpkt`, with dpkt's constants and the `parse_attrs` and `tlv`
+  functions. RADIUS and STUN attribute lists are read in Rust.
+- One byte left in a RADIUS attribute list raises
+  `radius.ShortAttributeError`, an `UnpackError` and `IndexError` subclass,
+  where dpkt raises `IndexError`. A cut-off STUN attribute header raises
+  `stun.ShortAttributeError`, an `UnpackError` and `struct.error` subclass,
+  where dpkt raises `struct.error`.
 
 OSPF and SCTP now parse and pack the way dpkt 1.9.8 does:
 
@@ -24,13 +27,6 @@ AH and ESP now parse and pack the way dpkt 1.9.8 does:
   next header through the IP protocol table.
 - An AH header whose inner IPv6 packet raises `ip6.FragmentOffsetError` keeps
   that packet as bytes, where dpkt raises `AttributeError`.
-
-OSPF and SCTP now parse and pack the way dpkt 1.9.8 does:
-
-- New modules: `octetrail.ospf` with `OSPF`, `octetrail.sctp` with `SCTP`,
-  `Chunk` and dpkt's chunk type constants, and `octetrail.crc32c`. Zero OSPF
-  and SCTP checksums are computed when packing.
-- IPv4 and IPv6 decode protocol 89 as OSPF and 132 as SCTP.
 
 PPP and PPPoE now parse and pack the way dpkt 1.9.8 does:
 
@@ -39,87 +35,6 @@ PPP and PPPoE now parse and pack the way dpkt 1.9.8 does:
 - Ethernet decodes type 0x880B as PPP and 0x8864 as PPPoE.
 - A PPP frame whose inner IPv6 packet raises `ip6.FragmentOffsetError` keeps
   that packet as bytes, where dpkt raises `AttributeError`.
-
-OSPF and SCTP now parse and pack the way dpkt 1.9.8 does:
-
-- New modules: `octetrail.ospf` with `OSPF`, `octetrail.sctp` with `SCTP`,
-  `Chunk` and dpkt's chunk type constants, and `octetrail.crc32c`. Zero OSPF
-  and SCTP checksums are computed when packing.
-- IPv4 and IPv6 decode protocol 89 as OSPF and 132 as SCTP.
-
-AH and ESP now parse and pack the way dpkt 1.9.8 does:
-
-- New modules: `octetrail.ah` with `AH` and `octetrail.esp` with `ESP`.
-- IPv4 decodes protocol 51 as AH and 50 as ESP. An AH header decodes its
-  next header through the IP protocol table.
-- An AH header whose inner IPv6 packet raises `ip6.FragmentOffsetError` keeps
-  that packet as bytes, where dpkt raises `AttributeError`.
-
-OSPF and SCTP now parse and pack the way dpkt 1.9.8 does:
-
-- New modules: `octetrail.ospf` with `OSPF`, `octetrail.sctp` with `SCTP`,
-  `Chunk` and dpkt's chunk type constants, and `octetrail.crc32c`. Zero OSPF
-  and SCTP checksums are computed when packing.
-- IPv4 and IPv6 decode protocol 89 as OSPF and 132 as SCTP.
-
-CDP, DTP and EDP now parse and pack the way dpkt 1.9.8 does:
-
-- New modules: `octetrail.cdp` with `CDP` and its entry classes,
-  `octetrail.dtp` with `DTP` and `octetrail.edp` with `EDP`, with dpkt's
-  constants. Zero CDP and EDP checksums are computed when packing.
-- Ethernet decodes type 0x2000 as CDP, 0x2004 as DTP and 0x00BB as EDP.
-
-OSPF and SCTP now parse and pack the way dpkt 1.9.8 does:
-
-- New modules: `octetrail.ospf` with `OSPF`, `octetrail.sctp` with `SCTP`,
-  `Chunk` and dpkt's chunk type constants, and `octetrail.crc32c`. Zero OSPF
-  and SCTP checksums are computed when packing.
-- IPv4 and IPv6 decode protocol 89 as OSPF and 132 as SCTP.
-
-AH and ESP now parse and pack the way dpkt 1.9.8 does:
-
-- New modules: `octetrail.ah` with `AH` and `octetrail.esp` with `ESP`.
-- IPv4 decodes protocol 51 as AH and 50 as ESP. An AH header decodes its
-  next header through the IP protocol table.
-- An AH header whose inner IPv6 packet raises `ip6.FragmentOffsetError` keeps
-  that packet as bytes, where dpkt raises `AttributeError`.
-
-OSPF and SCTP now parse and pack the way dpkt 1.9.8 does:
-
-- New modules: `octetrail.ospf` with `OSPF`, `octetrail.sctp` with `SCTP`,
-  `Chunk` and dpkt's chunk type constants, and `octetrail.crc32c`. Zero OSPF
-  and SCTP checksums are computed when packing.
-- IPv4 and IPv6 decode protocol 89 as OSPF and 132 as SCTP.
-
-PPP and PPPoE now parse and pack the way dpkt 1.9.8 does:
-
-- New modules: `octetrail.ppp` with `PPP` and its protocol table, and
-  `octetrail.pppoe` with `PPPoE`, the session `PPP` class and dpkt's codes.
-- Ethernet decodes type 0x880B as PPP and 0x8864 as PPPoE.
-- A PPP frame whose inner IPv6 packet raises `ip6.FragmentOffsetError` keeps
-  that packet as bytes, where dpkt raises `AttributeError`.
-
-OSPF and SCTP now parse and pack the way dpkt 1.9.8 does:
-
-- New modules: `octetrail.ospf` with `OSPF`, `octetrail.sctp` with `SCTP`,
-  `Chunk` and dpkt's chunk type constants, and `octetrail.crc32c`. Zero OSPF
-  and SCTP checksums are computed when packing.
-- IPv4 and IPv6 decode protocol 89 as OSPF and 132 as SCTP.
-
-AH and ESP now parse and pack the way dpkt 1.9.8 does:
-
-- New modules: `octetrail.ah` with `AH` and `octetrail.esp` with `ESP`.
-- IPv4 decodes protocol 51 as AH and 50 as ESP. An AH header decodes its
-  next header through the IP protocol table.
-- An AH header whose inner IPv6 packet raises `ip6.FragmentOffsetError` keeps
-  that packet as bytes, where dpkt raises `AttributeError`.
-
-OSPF and SCTP now parse and pack the way dpkt 1.9.8 does:
-
-- New modules: `octetrail.ospf` with `OSPF`, `octetrail.sctp` with `SCTP`,
-  `Chunk` and dpkt's chunk type constants, and `octetrail.crc32c`. Zero OSPF
-  and SCTP checksums are computed when packing.
-- IPv4 and IPv6 decode protocol 89 as OSPF and 132 as SCTP.
 
 Linux cooked capture and loopback headers now parse and pack the way dpkt
 1.9.8 does: the new `octetrail.sll`, `octetrail.sll2` and `octetrail.loopback`
@@ -128,58 +43,6 @@ payload through the Ethernet type table. An IPv6 payload that raises
 `ip6.FragmentOffsetError` stays bytes, or escapes from `Loopback` as that
 error, where dpkt raises `AttributeError`.
 
-OSPF and SCTP now parse and pack the way dpkt 1.9.8 does:
-
-- New modules: `octetrail.ospf` with `OSPF`, `octetrail.sctp` with `SCTP`,
-  `Chunk` and dpkt's chunk type constants, and `octetrail.crc32c`. Zero OSPF
-  and SCTP checksums are computed when packing.
-- IPv4 and IPv6 decode protocol 89 as OSPF and 132 as SCTP.
-
-AH and ESP now parse and pack the way dpkt 1.9.8 does:
-
-- New modules: `octetrail.ah` with `AH` and `octetrail.esp` with `ESP`.
-- IPv4 decodes protocol 51 as AH and 50 as ESP. An AH header decodes its
-  next header through the IP protocol table.
-- An AH header whose inner IPv6 packet raises `ip6.FragmentOffsetError` keeps
-  that packet as bytes, where dpkt raises `AttributeError`.
-
-OSPF and SCTP now parse and pack the way dpkt 1.9.8 does:
-
-- New modules: `octetrail.ospf` with `OSPF`, `octetrail.sctp` with `SCTP`,
-  `Chunk` and dpkt's chunk type constants, and `octetrail.crc32c`. Zero OSPF
-  and SCTP checksums are computed when packing.
-- IPv4 and IPv6 decode protocol 89 as OSPF and 132 as SCTP.
-
-PPP and PPPoE now parse and pack the way dpkt 1.9.8 does:
-
-- New modules: `octetrail.ppp` with `PPP` and its protocol table, and
-  `octetrail.pppoe` with `PPPoE`, the session `PPP` class and dpkt's codes.
-- Ethernet decodes type 0x880B as PPP and 0x8864 as PPPoE.
-- A PPP frame whose inner IPv6 packet raises `ip6.FragmentOffsetError` keeps
-  that packet as bytes, where dpkt raises `AttributeError`.
-
-OSPF and SCTP now parse and pack the way dpkt 1.9.8 does:
-
-- New modules: `octetrail.ospf` with `OSPF`, `octetrail.sctp` with `SCTP`,
-  `Chunk` and dpkt's chunk type constants, and `octetrail.crc32c`. Zero OSPF
-  and SCTP checksums are computed when packing.
-- IPv4 and IPv6 decode protocol 89 as OSPF and 132 as SCTP.
-
-AH and ESP now parse and pack the way dpkt 1.9.8 does:
-
-- New modules: `octetrail.ah` with `AH` and `octetrail.esp` with `ESP`.
-- IPv4 decodes protocol 51 as AH and 50 as ESP. An AH header decodes its
-  next header through the IP protocol table.
-- An AH header whose inner IPv6 packet raises `ip6.FragmentOffsetError` keeps
-  that packet as bytes, where dpkt raises `AttributeError`.
-
-OSPF and SCTP now parse and pack the way dpkt 1.9.8 does:
-
-- New modules: `octetrail.ospf` with `OSPF`, `octetrail.sctp` with `SCTP`,
-  `Chunk` and dpkt's chunk type constants, and `octetrail.crc32c`. Zero OSPF
-  and SCTP checksums are computed when packing.
-- IPv4 and IPv6 decode protocol 89 as OSPF and 132 as SCTP.
-
 CDP, DTP and EDP now parse and pack the way dpkt 1.9.8 does:
 
 - New modules: `octetrail.cdp` with `CDP` and its entry classes,
@@ -187,57 +50,13 @@ CDP, DTP and EDP now parse and pack the way dpkt 1.9.8 does:
   constants. Zero CDP and EDP checksums are computed when packing.
 - Ethernet decodes type 0x2000 as CDP, 0x2004 as DTP and 0x00BB as EDP.
 
-OSPF and SCTP now parse and pack the way dpkt 1.9.8 does:
+NTP, RIP, TFTP and HSRP now parse and pack the way dpkt 1.9.8 does:
 
-- New modules: `octetrail.ospf` with `OSPF`, `octetrail.sctp` with `SCTP`,
-  `Chunk` and dpkt's chunk type constants, and `octetrail.crc32c`. Zero OSPF
-  and SCTP checksums are computed when packing.
-- IPv4 and IPv6 decode protocol 89 as OSPF and 132 as SCTP.
-
-AH and ESP now parse and pack the way dpkt 1.9.8 does:
-
-- New modules: `octetrail.ah` with `AH` and `octetrail.esp` with `ESP`.
-- IPv4 decodes protocol 51 as AH and 50 as ESP. An AH header decodes its
-  next header through the IP protocol table.
-- An AH header whose inner IPv6 packet raises `ip6.FragmentOffsetError` keeps
-  that packet as bytes, where dpkt raises `AttributeError`.
-
-OSPF and SCTP now parse and pack the way dpkt 1.9.8 does:
-
-- New modules: `octetrail.ospf` with `OSPF`, `octetrail.sctp` with `SCTP`,
-  `Chunk` and dpkt's chunk type constants, and `octetrail.crc32c`. Zero OSPF
-  and SCTP checksums are computed when packing.
-- IPv4 and IPv6 decode protocol 89 as OSPF and 132 as SCTP.
-
-PPP and PPPoE now parse and pack the way dpkt 1.9.8 does:
-
-- New modules: `octetrail.ppp` with `PPP` and its protocol table, and
-  `octetrail.pppoe` with `PPPoE`, the session `PPP` class and dpkt's codes.
-- Ethernet decodes type 0x880B as PPP and 0x8864 as PPPoE.
-- A PPP frame whose inner IPv6 packet raises `ip6.FragmentOffsetError` keeps
-  that packet as bytes, where dpkt raises `AttributeError`.
-
-OSPF and SCTP now parse and pack the way dpkt 1.9.8 does:
-
-- New modules: `octetrail.ospf` with `OSPF`, `octetrail.sctp` with `SCTP`,
-  `Chunk` and dpkt's chunk type constants, and `octetrail.crc32c`. Zero OSPF
-  and SCTP checksums are computed when packing.
-- IPv4 and IPv6 decode protocol 89 as OSPF and 132 as SCTP.
-
-AH and ESP now parse and pack the way dpkt 1.9.8 does:
-
-- New modules: `octetrail.ah` with `AH` and `octetrail.esp` with `ESP`.
-- IPv4 decodes protocol 51 as AH and 50 as ESP. An AH header decodes its
-  next header through the IP protocol table.
-- An AH header whose inner IPv6 packet raises `ip6.FragmentOffsetError` keeps
-  that packet as bytes, where dpkt raises `AttributeError`.
-
-OSPF and SCTP now parse and pack the way dpkt 1.9.8 does:
-
-- New modules: `octetrail.ospf` with `OSPF`, `octetrail.sctp` with `SCTP`,
-  `Chunk` and dpkt's chunk type constants, and `octetrail.crc32c`. Zero OSPF
-  and SCTP checksums are computed when packing.
-- IPv4 and IPv6 decode protocol 89 as OSPF and 132 as SCTP.
+- New modules: `octetrail.ntp`, `octetrail.rip` with `RIP`, `RTE` and `Auth`,
+  `octetrail.tftp` and `octetrail.hsrp`, with dpkt's constants.
+- A TFTP request without a NUL after the file name raises
+  `tftp.RequestError`, an `UnpackError` and `IndexError` subclass, where dpkt
+  raises `IndexError`.
 
 ## 0.5.1
 

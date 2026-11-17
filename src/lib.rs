@@ -20,11 +20,13 @@ pub mod ipv4;
 pub mod ipv6;
 pub mod pcapng;
 pub mod pcapng_writer;
+pub mod radius;
 pub mod rip;
 pub mod writer;
 pub use writer::Writer;
 
 pub mod sctp;
+pub mod stun;
 pub mod tcp;
 pub mod tls;
 pub mod udp;
