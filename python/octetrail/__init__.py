@@ -3,6 +3,8 @@
 from . import capture, ethernet, ip, pcap, pcapng
 from . import dns as dns
 from . import http as http
+from . import icmp as icmp
+from . import icmp6 as icmp6
 from . import igmp as igmp
 from . import ip6 as ip6
 from . import ipx as ipx
@@ -43,6 +45,7 @@ __all__.append("http")
 __all__.append("ssl")
 
 __all__.extend(("ipx", "llc", "stp"))
+__all__.extend(("icmp", "icmp6"))
 __all__.extend(("igmp", "vrrp"))
 
 __all__.extend(("Packet", "hexdump", "in_cksum", "in_cksum_add", "in_cksum_done", "packet"))
