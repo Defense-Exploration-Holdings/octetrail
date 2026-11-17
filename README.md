@@ -23,7 +23,7 @@ covered Python reader/writer subset without changing normal `dpkt` imports.
 The [UniversalReader guide](docs/universal-reader.md) describes measured
 1.9.8-style format selection over the native readers.
 
-Ethernet II, IPv4/IPv6 and opaque TCP/UDP objects can be composed and decoded offline.
+Ethernet, IPv4/IPv6 and opaque TCP/UDP objects can be composed and decoded offline.
 See the [composition guide](docs/composition.md) for dispatch, options, checksum
 update rules, resource bounds and measured compatibility limits.
 The [IPv6 module](docs/ipv6.md) parses and packs IPv6 and its extension headers
@@ -34,6 +34,8 @@ The [HTTP module](docs/http.md) parses and packs HTTP/1.x requests and responses
 the way dpkt 1.9.8 does, without stream reassembly.
 The [Packet base class](docs/packet.md) is dpkt's, for writing your own header
 classes, with the checksum and hexdump helpers.
+The [Ethernet module](docs/ethernet.md) parses and packs Ethernet II, 802.3 LLC,
+Novell, 802.1Q, MPLS and ISL frames the way dpkt 1.9.8 does, with LLC, STP and IPX.
 The [SSL and TLS module](docs/tls.md) parses and packs records, handshakes,
 hellos and certificate lists the way dpkt 1.9.8 does, with dpkt's cipher suite table.
 

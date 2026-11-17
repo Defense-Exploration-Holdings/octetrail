@@ -41,7 +41,7 @@ its supplied sink. Default packet allocation is limited to 16 MiB. PCAPNG adds
 block, interface and scan limits. These are parser policies, not total process
 memory, capture-size, packet-count or time limits. Caller-provided I/O can block.
 
-The [composition subset](composition.md) covers Ethernet II to IPv4 to TCP/UDP,
+The [composition subset](composition.md) covers Ethernet to IPv4 to TCP/UDP,
 opaque IP/TCP options and ordinary IPv4/transport checksum updates. The
 [IPv6 module](ipv6.md) parses and packs IPv6 and its extension headers the way
 dpkt 1.9.8 does. Payload protocols without an OctetRail module stay bytes.
@@ -52,6 +52,10 @@ including chunked bodies, the way dpkt 1.9.8 does. No automatic application
 dispatch is added.
 The [Packet base class](packet.md) follows dpkt 1.9.8, including bit fields,
 `repr()`, `pprint()` and the checksum helpers.
+The [Ethernet module](ethernet.md) parses and packs Ethernet II, IEEE 802.3 LLC,
+Novell raw, 802.1Q, MPLS and Cisco ISL frames, and the LLC, STP and IPX classes,
+the way dpkt 1.9.8 does. An MPLS stack with nothing after it raises an
+`UnpackError` subclass where dpkt raises `IndexError`.
 The [SSL and TLS module](tls.md) parses and packs records, handshakes, hellos,
 certificate lists and SSLv2 records the way dpkt 1.9.8 does. Two errors are
 also `UnpackError` subclasses where dpkt raises other classes.

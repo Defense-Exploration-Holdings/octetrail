@@ -1,5 +1,24 @@
 # Release notes
 
+## Unreleased
+
+Ethernet now parses and packs the way dpkt 1.9.8 does:
+
+- Frames: Ethernet II, IEEE 802.3 with LLC, LLC/SNAP and Novell raw 802.3, with
+  802.1Q and QinQ tags, MPLS labels and pseudowires, and Cisco ISL tags. 802.3
+  frames keep their `padding`, `fcs` and `trailer`, and a zero `fcs` is
+  computed when packing.
+- New classes: `VLANtag8021Q`, `VLANtagISL` and `MPLSlabel`, and the new
+  `octetrail.llc`, `octetrail.stp` and `octetrail.ipx` modules. The type table
+  has `set_type`, `get_type` and `get_type_rev`, and dpkt's `ETH_*` constants
+  are present.
+- Errors: follow dpkt, except that an MPLS stack with nothing after it raises
+  `ethernet.MPLSIndexError`, an `UnpackError` and an `IndexError`. Nested ISL
+  tags are read in one pass, where dpkt raises `RecursionError`.
+- API: `Ethernet` is a `Packet` subclass. Unsupported framing no longer raises
+  `NotImplementedError`. `ethernet.LimitError`, `DEFAULT_MAX_FRAME_BYTES` and
+  the 16 MiB frame limit are removed.
+
 ## 0.4.1
 
 - `Cls in p` no longer raises `TypeError` when the TCP or UDP layer it walks
