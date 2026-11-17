@@ -1,14 +1,10 @@
 #![no_main]
-//! HTTP/1.x start line, header and body framing for requests and responses.
+//! HTTP/1.x requests and responses, including chunked bodies.
 use libfuzzer_sys::fuzz_target;
 use octetrail::http;
 
 fuzz_target!(|data: &[u8]| {
-    for response in [false, true] {
-        if let Ok((_, pos)) = http::start(data, response) {
-            if let Ok((headers, pos)) = http::headers(data, pos) {
-                let _ = http::body(data, pos, &headers, true);
-            }
-        }
-    }
+    let _ = http::Request::parse(data);
+    let _ = http::Response::parse(data);
+    let _ = http::message(data, true);
 });

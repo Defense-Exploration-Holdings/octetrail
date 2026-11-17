@@ -1,171 +1,138 @@
-"""Explicit bounded HTTP/1.0 and HTTP/1.1 messages with opaque byte bodies.
+"""HTTP/1.x requests and responses, parsed and packed the way dpkt 1.9.8 does.
 
-Content-Length and dpkt's Content-Type-to-end selection are supported. Transfer
-encoding, stream reassembly and application dispatch are outside this subset.
-Length headers remain caller fields on mutation and serialization.
+Parsing runs in Rust and follows dpkt's line reading, whitespace and length
+rules. There is no stream reassembly and no application dispatch.
 """
 
+from collections import OrderedDict
+
 from . import _native
-from .errors import NeedData, PackError, UnpackError
-
-MAX_MESSAGE_BYTES = 1024 * 1024
-MAX_HEAD_BYTES = 65536
-MAX_LINE_BYTES = 8192
-MAX_HEADERS = 128
-LimitError = _native.PacketLimitError
-
-
-class ParseLimitError(UnpackError, LimitError):
-    """Bounded parse refusal accepted by both public exception families."""
+from .errors import NeedData, UnpackError
 
 
 def _parse(function, *args):
     try:
         return function(*args)
-    except _native.PacketLimitError as error:
-        raise ParseLimitError(str(error)) from None
     except _native.TruncatedError as error:
         raise NeedData(str(error)) from None
     except _native.HttpFormatError as error:
         raise UnpackError(str(error)) from None
 
 
-def _field(name, value):
-    try:
-        _native._http_field(name, value)
-    except _native.HttpFormatError as error:
-        raise PackError(str(error)) from None
+def _headers(rows):
+    """Header rows as dpkt's dict: one value, or a list of values when repeated."""
+    return OrderedDict((name, values[0] if len(values) == 1 else values) for name, values in rows)
 
 
-class _Message:
-    _response = False
-    _defaults = ()
+def _buffer(buf):
+    if not isinstance(buf, (bytes, bytearray, memoryview)):
+        raise TypeError("HTTP unpack requires bytes")
+    return bytes(buf)
+
+
+def parse_headers(f):
+    """Return the dict of headers read from the file object `f`."""
+    start = f.tell()
+    rows, used = _parse(_native._http_parse_headers, _buffer(f.read()))
+    f.seek(start + used)
+    return _headers(rows)
+
+
+def parse_body(f, headers):
+    """Return the body read from the file object `f`, given the header dict."""
+    if headers.get("transfer-encoding", "").lower() == "chunked":
+        mode, length = "chunked", 0
+    elif "content-length" in headers:
+        mode, length = "length", max(-1, min(int(headers["content-length"]), 1 << 62))
+    elif "content-type" in headers:
+        mode, length = "end", 0
+    else:
+        mode, length = "empty", 0
+    start = f.tell()
+    body, used = _parse(_native._http_parse_body, _buffer(f.read()), mode, length)
+    f.seek(start + used)
+    return body
+
+
+class Message:
+    """Headers, body and the bytes after the body."""
+
+    __hdr_defaults__ = {}
+    headers = None
+    body = None
 
     def __init__(self, *args, **kwargs):
-        if len(args) > 1:
-            raise TypeError("HTTP accepts at most one positional bytes buffer")
         if args:
             self.unpack(args[0])
-            return
-        fields = {name for name, _ in self._defaults} | {"headers", "body", "data"}
-        unknown = kwargs.keys() - fields
-        if unknown:
-            raise TypeError("unsupported HTTP fields: " + ", ".join(sorted(unknown)))
-        for name, default in self._defaults:
-            setattr(self, name, kwargs.get(name, default))
-        self.headers = kwargs.get("headers", {})
-        self.body = kwargs.get("body", b"")
-        self.data = kwargs.get("data", b"")
+        else:
+            self.headers = OrderedDict()
+            self.body = b""
+            self.data = b""
+            for key, value in self.__hdr_defaults__.items():
+                setattr(self, key, value)
+            for key, value in kwargs.items():
+                setattr(self, key, value)
 
-    def unpack(self, buf):
-        if not isinstance(buf, bytes):
-            raise TypeError("HTTP unpack requires bytes")
-        values, pos = _parse(_native._http_start, buf, self._response)
-        for (name, _), value in zip(self._defaults, values, strict=True):
-            setattr(self, name, value)
-        rows, pos = _parse(_native._http_headers, buf, pos)
-        self.headers = {name: values[0] if len(values) == 1 else values for name, values in rows}
-        allowed = not self._response or (
-            int(self.status) >= 200 and self.status not in ("204", "304")
-        )
-        self.body, self.data = _parse(_native._http_body, buf, pos, rows, allowed)
+    def unpack(self, buf, is_body_allowed=True):
+        # Like dpkt, headers are set before the body is read, so they stay set
+        # when the body raises.
+        buf = _buffer(buf)
+        rows, used = _parse(_native._http_parse_headers, buf)
+        self.headers = _headers(rows)
+        if is_body_allowed:
+            self.body, self.data = _parse(_native._http_body, buf[used:], rows, True)
+        else:
+            self.body, self.data = b"", buf[used:]
 
     def pack_hdr(self):
-        """Render headers only, as in dpkt. Duplicate lists use Python list text."""
-        if not isinstance(self.headers, dict):
-            raise TypeError("HTTP headers require an ordered dict")
-        if len(self.headers) > MAX_HEADERS:
-            raise LimitError("HTTP header count exceeds limit")
-        result, total = [], 0
-        for name, value in self.headers.items():
-            if not isinstance(name, str):
-                raise TypeError("HTTP header names require str")
-            if isinstance(value, list):
-                if len(value) > MAX_HEADERS:
-                    raise LimitError("HTTP duplicate header count exceeds limit")
-                if not all(isinstance(v, str) for v in value):
-                    raise TypeError("HTTP header values require str or list of str")
-                if sum(map(len, value)) + len(value) * 4 > MAX_LINE_BYTES:
-                    raise LimitError("HTTP header line exceeds limit")
-            elif not isinstance(value, str):
-                raise TypeError("HTTP header values require str or list of str")
-            if len(name) > MAX_LINE_BYTES or len(value) > MAX_LINE_BYTES:
-                raise LimitError("HTTP header line exceeds limit")
-            for item in value if isinstance(value, list) else [value]:
-                _field(name, item)
-            rendered = str(value)
-            _field(name, rendered)
-            if len(name) + len(rendered) + 4 > MAX_LINE_BYTES:
-                raise LimitError("HTTP header line exceeds limit")
-            line = f"{name}: {rendered}\r\n"
-            if len(line) > MAX_LINE_BYTES:
-                raise LimitError("HTTP header line exceeds limit")
-            total += len(line)
-            if total > MAX_HEAD_BYTES:
-                raise LimitError("HTTP head exceeds limit")
-            result.append(line)
-        return "".join(result)
+        return "".join(["%s: %s\r\n" % t for t in self.headers.items()])
 
-    def _parts(self):
-        values = []
-        for name, _ in self._defaults:
-            value = getattr(self, name)
-            if not isinstance(value, str):
-                raise TypeError("HTTP start fields require str")
-            if len(value) > MAX_LINE_BYTES:
-                raise LimitError("HTTP start line exceeds limit")
-            _field("value", value)
-            values.append(value)
-        if not isinstance(self.body, bytes):
-            raise TypeError("HTTP body requires bytes")
-        if len(self.body) > MAX_MESSAGE_BYTES:
-            raise LimitError("HTTP message exceeds limit")
-        if self._response:
-            start = f"HTTP/{values[0]} {values[1]} {values[2]}\r\n"
-        else:
-            start = f"{values[0]} {values[1]} HTTP/{values[2]}\r\n"
-        head = start + self.pack_hdr() + "\r\n"
-        try:
-            encoded = head.encode("ascii")
-        except UnicodeEncodeError:
-            raise PackError("HTTP head requires ASCII") from None
-        return encoded, self.body
-
-    def __bytes__(self):
-        head, body = self._parts()
-        try:
-            return _native._http_pack(head, body, self._response)
-        except (_native.HttpFormatError, _native.TruncatedError) as error:
-            raise PackError(str(error)) from None
-
-    def __str__(self):
-        # Reference text/len convention ignores invalid UTF-8 body bytes.
-        raw = bytes(self)
-        head, body = self._parts()
-        return raw[: len(head)].decode("ascii") + body.decode("utf8", "ignore")
+    def _start(self):
+        return ""
 
     def __len__(self):
         return len(str(self))
 
+    def __str__(self):
+        return "%s%s\r\n%s" % (self._start(), self.pack_hdr(), self.body.decode("utf8", "ignore"))
 
-class Request(_Message):
-    """Mutable method, uri, version, headers, body and unread data fields."""
-
-    _defaults = (("method", "GET"), ("uri", "/"), ("version", "1.0"))
+    def __bytes__(self):
+        return _native._http_pack(self._start(), self.pack_hdr(), self.body or b"")
 
 
-class Response(_Message):
-    """Mutable version, status text, reason, headers, body and unread data."""
+class Request(Message):
+    """An HTTP request: method, uri, version, headers, body and data."""
 
-    _response = True
-    _defaults = (("version", "1.0"), ("status", "200"), ("reason", "OK"))
+    __hdr_defaults__ = {"method": "GET", "uri": "/", "version": "1.0"}
+
+    def unpack(self, buf):
+        buf = _buffer(buf)
+        (self.method, self.uri, self.version), used = _parse(_native._http_request_line, buf)
+        Message.unpack(self, buf[used:])
+
+    def _start(self):
+        return "%s %s %s/%s\r\n" % (self.method, self.uri, "HTTP", self.version)
+
+
+class Response(Message):
+    """An HTTP response: version, status, reason, headers, body and data."""
+
+    __hdr_defaults__ = {"version": "1.0", "status": "200", "reason": "OK"}
+
+    def unpack(self, buf):
+        buf = _buffer(buf)
+        (self.version, self.status, self.reason), used = _parse(_native._http_response_line, buf)
+        Message.unpack(self, buf[used:], _native._http_body_allowed(self.status))
+
+    def _start(self):
+        return "%s/%s %s %s\r\n" % ("HTTP", self.version, self.status, self.reason)
 
 
 def decode(buf):
-    """Select one message or return identical bytes on a scoped parse error.
+    """Return a Response or Request for `buf`, or `buf` itself when it does not parse.
 
-    Parse budget refusals also retain the original bytes. Programmer and
-    allocation errors propagate. This function does not iterate streams.
+    Bytes starting with "HTTP/" are tried as a response, anything else as a
+    request. This function does not iterate streams.
     """
     if not isinstance(buf, bytes):
         raise TypeError("HTTP decode requires bytes")

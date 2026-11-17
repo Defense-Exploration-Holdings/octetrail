@@ -48,9 +48,9 @@ bounded transport dispatch and explicit version selection. Non-atomic IPv6
 fragments remain bytes.
 The [DNS module](dns.md) parses and packs messages, questions, records and
 compressed names the way dpkt 1.9.8 does. It does not add transport dispatch.
-The [explicit HTTP subset](http.md) covers HTTP/1.0 and HTTP/1.1 request/response
-fields and Content-Length or Content-Type body selection, with caller lengths
-retained and transfer encoding deferred. No automatic application dispatch is added.
+The [HTTP module](http.md) parses and packs HTTP/1.x requests and responses,
+including chunked bodies, the way dpkt 1.9.8 does. No automatic application
+dispatch is added.
 The [passive TLS subset](tls.md) adds bounded record framing and explicit
 ServerHello metadata, with opaque fallback for other handshake kinds. Its
 record-type dispatch inventory is deliberately partial.
