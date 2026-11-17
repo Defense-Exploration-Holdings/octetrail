@@ -16,8 +16,9 @@ fn transport(protocol: u8, data: &[u8]) {
 }
 
 fn network(data: &[u8]) {
-    if let Ok(packet) = ipv4::Packet::parse(data) {
+    if let Ok(mut packet) = ipv4::Packet::parse(data) {
         transport(packet.header.protocol, packet.data);
+        let _ = packet.to_bytes();
     }
     if let Ok(packet) = ipv6::Packet::parse(data, ipv6::Limits::default()) {
         transport(packet.protocol, packet.data);

@@ -1,4 +1,7 @@
-//! Bounded IPv4 headers, opaque options and native checksum operations.
+//! IPv4 headers, opaque options and native checksum operations.
+//!
+//! Parsing follows dpkt 1.9.8: any version is accepted, options and payload are sliced
+//! from what is present, and a zero total length means the rest of the buffer.
 
 use std::fmt;
 
@@ -9,11 +12,7 @@ pub const MAX_TOTAL_LEN: usize = u16::MAX as usize;
 pub enum Error {
     Truncated { available: usize, required: usize },
     InvalidHeaderLength,
-    UnsupportedVersion(u8),
-    InvalidOptionsLength,
     UnsupportedTransport(u8),
-    OffloadLengthUnsupported,
-    InvalidTotalLength(u16),
     TooLarge,
     Allocation,
 }
@@ -28,13 +27,7 @@ impl fmt::Display for Error {
                 write!(f, "got {available}, {required} needed at least")
             }
             Self::InvalidHeaderLength => write!(f, "invalid header length"),
-            Self::UnsupportedVersion(v) => write!(f, "unsupported IPv4 version {v}"),
-            Self::InvalidOptionsLength => write!(f, "IPv4 options do not match header length"),
             Self::UnsupportedTransport(p) => write!(f, "unsupported checksum protocol {p}"),
-            Self::OffloadLengthUnsupported => write!(f, "zero IPv4 total length is unsupported"),
-            Self::InvalidTotalLength(n) => {
-                write!(f, "IPv4 total length {n} is below header length")
-            }
             Self::TooLarge => write!(f, "IPv4 datagram exceeds 65535 bytes"),
             Self::Allocation => write!(f, "cannot allocate IPv4 datagram"),
         }
@@ -88,16 +81,12 @@ impl Default for Header {
 }
 
 impl Header {
-    fn validate_layout(self) -> Result<(), Error> {
-        if self.version_ihl >> 4 != 4 {
-            return Err(Error::UnsupportedVersion(self.version_ihl >> 4));
-        }
-        match self.version_ihl & 15 {
-            0..=4 => Err(Error::InvalidHeaderLength),
-            _ => Ok(()),
-        }
+    /// Header length in bytes as declared by the IHL field.
+    pub fn header_len(self) -> usize {
+        usize::from(self.version_ihl & 15) * 4
     }
 
+    /// Read the fixed 20 bytes. Version and IHL are returned as found.
     pub fn parse(bytes: &[u8]) -> Result<Self, Error> {
         if bytes.len() < HEADER_LEN {
             return Err(Error::Truncated {
@@ -120,13 +109,11 @@ impl Header {
                 .try_into()
                 .expect("fixed header destination slice"),
         };
-        header.validate_layout()?;
         Ok(header)
     }
 
-    /// Encode fields as assigned, without checksum validation or recalculation.
-    pub fn to_bytes(self) -> Result<[u8; HEADER_LEN], Error> {
-        self.validate_layout()?;
+    /// Encode fields as assigned, without layout checks or checksum recalculation.
+    pub fn to_bytes(self) -> [u8; HEADER_LEN] {
         let mut output = [0; HEADER_LEN];
         output[0] = self.version_ihl;
         output[1] = self.tos;
@@ -138,7 +125,7 @@ impl Header {
         output[10..12].copy_from_slice(&self.checksum.to_be_bytes());
         output[12..16].copy_from_slice(&self.src);
         output[16..20].copy_from_slice(&self.dst);
-        Ok(output)
+        output
     }
 }
 
@@ -150,62 +137,48 @@ pub struct Packet<'a> {
 }
 
 impl<'a> Packet<'a> {
-    /// Retain the declared datagram and ignore any trailing enclosing-frame bytes.
+    /// Slice options and payload the way dpkt 1.9.8 does. Only a buffer shorter than the
+    /// fixed header or an IHL below 5 is an error. Short options and a payload cut off by
+    /// the buffer are kept as found, bytes beyond a nonzero total length are dropped, and
+    /// a zero total length (segmentation offload) keeps the rest of the buffer.
     pub fn parse(bytes: &'a [u8]) -> Result<Self, Error> {
         let header = Header::parse(bytes)?;
-        let length = usize::from(header.total_length);
-        if length == 0 {
-            return Err(Error::OffloadLengthUnsupported);
+        let header_len = header.header_len();
+        if header_len < HEADER_LEN {
+            return Err(Error::InvalidHeaderLength);
         }
-        let header_len = usize::from(header.version_ihl & 15) * 4;
-        if bytes.len() < header_len {
-            return Err(Error::Truncated {
-                available: bytes.len(),
-                required: header_len,
-            });
-        }
-        if length < header_len {
-            return Err(Error::InvalidTotalLength(header.total_length));
-        }
-        if length > bytes.len() {
-            return Err(Error::Truncated {
-                available: bytes.len(),
-                required: length,
-            });
-        }
+        let start = header_len.min(bytes.len());
+        let end = match usize::from(header.total_length) {
+            0 => bytes.len(),
+            length => length.min(bytes.len()).max(start),
+        };
         Ok(Self {
             header,
-            opts: &bytes[HEADER_LEN..header_len],
-            data: &bytes[header_len..length],
+            opts: &bytes[HEADER_LEN..start],
+            data: &bytes[start..end],
         })
     }
 
-    /// Follow dpkt 1.9.8's zero-checksum update rule, preserving explicit sums.
+    /// Byte length of the encoded datagram: header, options and payload as assigned.
+    pub fn encoded_len(&self) -> usize {
+        HEADER_LEN + self.opts.len() + self.data.len()
+    }
+
+    /// Follow dpkt 1.9.8: a zero checksum sets the total length and computes the header
+    /// checksum; an explicit checksum leaves every field as assigned.
     pub fn to_bytes(&mut self) -> Result<Vec<u8>, Error> {
-        self.header.validate_layout()?;
-        if self.opts.len() != usize::from(self.header.version_ihl & 15) * 4 - HEADER_LEN {
-            return Err(Error::InvalidOptionsLength);
-        }
-        let length = HEADER_LEN
-            .checked_add(self.opts.len())
-            .and_then(|n| n.checked_add(self.data.len()))
-            .ok_or(Error::TooLarge)?;
-        if length > MAX_TOTAL_LEN {
-            return Err(Error::TooLarge);
-        }
-        self.header.validate_layout()?;
+        let length = self.encoded_len();
         if self.header.checksum == 0 {
-            self.header.total_length = length as u16;
+            self.header.total_length = u16::try_from(length).map_err(|_| Error::TooLarge)?;
             let sum =
-                u32::from(!checksum(&self.header.to_bytes()?)) + u32::from(!checksum(self.opts));
+                u32::from(!checksum(&self.header.to_bytes())) + u32::from(!checksum(self.opts));
             self.header.checksum = finish_checksum(sum);
         }
-        let raw = self.header.to_bytes()?;
         let mut output = Vec::new();
         output
             .try_reserve_exact(length)
             .map_err(|_| Error::Allocation)?;
-        output.extend_from_slice(&raw);
+        output.extend_from_slice(&self.header.to_bytes());
         output.extend_from_slice(self.opts);
         output.extend_from_slice(self.data);
         Ok(output)

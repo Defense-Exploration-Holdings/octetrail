@@ -14,16 +14,11 @@ The separate [IPv6/raw-IP contract](ipv6.md) covers EtherType `0x86dd`, bounded
 opaque extension framing and its stricter non-atomic fragment policy. The IPv4
 rules below remain unchanged.
 
-A declared IPv4 length below its complete header length raises `ValueError` when
-parsing IP directly. Inside Ethernet it leaves the original payload as bytes.
-Only this specific native parse failure receives that nested classification;
-unrelated `ValueError`, type errors and resource failures still propagate.
-
-Snaplen-truncated frames are a compatibility difference: if the captured IPv4
-bytes end before its declared datagram length, Ethernet retains the entire IP
-payload as bytes and does not create an `ip` alias. Direct IP parsing raises
-`NeedData`. The dpkt references can expose partial IP/transport objects instead,
-so consumers must not assume `frame.ip.tcp` exists for truncated captures.
+IPv4 parsing follows dpkt 1.9.8: a declared length below the header, a zero
+length or a datagram cut off by the capture is sliced from the bytes present, so
+Ethernet exposes an `ip` alias for it. A transport header that does not decode
+leaves `ip.data` as bytes. Unrelated `ValueError`, type errors and resource
+failures still propagate.
 
 ```python
 from octetrail import ethernet, ip, tcp
@@ -59,20 +54,20 @@ set it to `len(datagram)` when appropriate. No silent length correction is added
 dpkt 1.9.6 rewrites IP length even with a nonzero IP checksum, while 1.9.8 and
 OctetRail retain it. That difference is measured separately, not called parity.
 
-IP and TCP option bytes are opaque, at most 40 bytes each. Set `hl` or `off` to
-five plus the option length divided by four. The values are not inferred from
-option contents. Packing requires exact layout agreement and complete aligned
-options. Parsing requires all declared header bytes. The two dpkt references
-accept some inconsistent or incomplete option layouts; these cases are explicit
-strict differences. Option-value parsing and convenience option APIs are absent.
+IP and TCP option bytes are opaque. Set `hl` or `off` to five plus the option
+length divided by four; the values are not inferred from option contents. IPv4
+packs and parses options as dpkt 1.9.8 does, including inconsistent or short
+layouts. TCP packing still requires exact layout agreement and complete aligned
+options of at most 40 bytes, and TCP parsing requires all declared header bytes;
+the dpkt references accept some of those layouts. Option-value parsing and
+convenience option APIs are absent.
 
 Noninitial IPv4 fragments stay bytes. An initial fragment can expose a transport
 header, matching the references, but MF suppresses automatic transport checksum
-updates. There is no reassembly. Known IPv4 datagrams use their declared length,
-so enclosing Ethernet padding is not treated as IP payload. Unknown Ethernet
+updates. There is no reassembly. A nonzero IPv4 total length drops trailing
+bytes, so enclosing Ethernet padding is not treated as IP payload. Unknown Ethernet
 types retain every payload byte. VLAN, MPLS, 802.3, FCS and nonce/reserved TCP
-bits retain their prior exclusions. IPv4 version/offload-length restrictions,
-offset-unit differences and the legacy `off` exclusion remain documented in the
+bits retain their prior exclusions. IPv4 offset-unit differences and the legacy `off` exclusion remain documented in the
 [IPv4 guide](ipv4.md).
 
 ## Bounds and verification

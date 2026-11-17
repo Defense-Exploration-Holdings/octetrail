@@ -1,4 +1,4 @@
-use pyo3::exceptions::{PyException, PyMemoryError, PyNotImplementedError, PyValueError};
+use pyo3::exceptions::{PyException, PyMemoryError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
@@ -22,9 +22,6 @@ fn error(error: octetrail::ipv4::Error) -> PyErr {
     match error {
         error @ Error::Truncated { .. } => super::TruncatedError::new_err(error.to_string()),
         Error::InvalidHeaderLength => Ipv4UnpackError::new_err(error.to_string()),
-        error @ (Error::UnsupportedVersion(_) | Error::OffloadLengthUnsupported) => {
-            PyNotImplementedError::new_err(error.to_string())
-        }
         Error::Allocation => PyMemoryError::new_err(error.to_string()),
         error => PyValueError::new_err(error.to_string()),
     }
@@ -52,21 +49,11 @@ fn header(fields: Fields<'_>) -> octetrail::ipv4::Header {
 }
 
 #[pyfunction]
-#[pyo3(signature = (raw, *, nested=false))]
 fn _ipv4_unpack<'py>(
     py: Python<'py>,
     raw: &Bound<'py, PyBytes>,
-    nested: bool,
 ) -> PyResult<(Fields<'py>, Bound<'py, PyBytes>, Bound<'py, PyBytes>)> {
-    let packet = octetrail::ipv4::Packet::parse(raw.as_bytes()).map_err(|failure| {
-        // Preserve the direct API's ValueError, while classifying this exact
-        // parse failure for the enclosing frame's opaque-payload fallback.
-        if nested && matches!(failure, octetrail::ipv4::Error::InvalidTotalLength(_)) {
-            Ipv4UnpackError::new_err(failure.to_string())
-        } else {
-            error(failure)
-        }
-    })?;
+    let packet = octetrail::ipv4::Packet::parse(raw.as_bytes()).map_err(error)?;
     let h = packet.header;
     Ok((
         (
@@ -88,8 +75,7 @@ fn _ipv4_unpack<'py>(
 
 #[pyfunction]
 fn _ipv4_header<'py>(py: Python<'py>, fields: Fields<'py>) -> PyResult<Bound<'py, PyBytes>> {
-    let raw = header(fields).to_bytes().map_err(error)?;
-    Ok(PyBytes::new(py, &raw))
+    Ok(PyBytes::new(py, &header(fields).to_bytes()))
 }
 
 #[pyfunction]
