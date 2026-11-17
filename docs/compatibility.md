@@ -65,6 +65,8 @@ The [GRE and PIM modules](gre-pim.md) parse and pack those packets the way
 dpkt 1.9.8 does, with no declared differences.
 The [IGMP and VRRP modules](igmp-vrrp.md) parse and pack those messages the way
 dpkt 1.9.8 does, with no declared differences.
+The [OSPF and SCTP modules](ospf-sctp.md) parse and pack those packets the way
+dpkt 1.9.8 does, with no declared differences.
 The [ARP module](arp.md) parses and packs ARP the way dpkt 1.9.8 does, with no
 declared differences.
 The [SSL and TLS module](tls.md) parses and packs records, handshakes, hellos,

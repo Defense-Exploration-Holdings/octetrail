@@ -2,6 +2,7 @@
 
 from . import arp as arp
 from . import capture, ethernet, ip, pcap, pcapng
+from . import crc32c as crc32c
 from . import dns as dns
 from . import gre as gre
 from . import http as http
@@ -12,9 +13,11 @@ from . import ip6 as ip6
 from . import ipip as ipip
 from . import ipx as ipx
 from . import llc as llc
+from . import ospf as ospf
 from . import packet as packet
 from . import pim as pim
 from . import raw as raw
+from . import sctp as sctp
 from . import ssl as ssl
 from . import stp as stp
 from . import tcp as tcp
@@ -51,6 +54,7 @@ __all__.append("ssl")
 __all__.extend(("ipip", "ipx", "llc", "stp"))
 __all__.extend(("icmp", "icmp6"))
 __all__.extend(("igmp", "vrrp"))
+__all__.extend(("crc32c", "ospf", "sctp"))
 __all__.extend(("gre", "pim"))
 __all__.append("arp")
 

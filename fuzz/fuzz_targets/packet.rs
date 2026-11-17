@@ -1,7 +1,7 @@
 #![no_main]
 //! Ethernet, IPv4/IPv6 and TCP/UDP decoding, starting at every layer.
 use libfuzzer_sys::fuzz_target;
-use octetrail::{ethernet, gre, ipv4, ipv6, tcp, udp, vrrp};
+use octetrail::{ethernet, gre, ipv4, ipv6, sctp, tcp, udp, vrrp};
 
 fn transport(protocol: u8, data: &[u8]) {
     match protocol {
@@ -51,6 +51,12 @@ fuzz_target!(|data: &[u8]| {
         }
     }
     let _ = ethernet::crc32(data);
+    if let Ok(found) = sctp::chunks(data, sctp::HEADER_LEN) {
+        for chunk in &found.chunks {
+            let _ = &data[chunk.data.0..chunk.padding.1];
+        }
+    }
+    let _ = sctp::crc32c_done(sctp::crc32c_add(0xffff_ffff, data));
     if let Ok(found) = gre::layout(data) {
         let _ = &data[found.payload..];
     }

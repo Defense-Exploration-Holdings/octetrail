@@ -21,6 +21,7 @@ pub mod pcapng_writer;
 pub mod writer;
 pub use writer::Writer;
 
+pub mod sctp;
 pub mod tcp;
 pub mod tls;
 pub mod udp;
