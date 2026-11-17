@@ -51,6 +51,8 @@ retained upstream BSD license.
 
 The IGMP and VRRP facades adapt dpkt's igmp.py and vrrp.py under the same
 retained upstream BSD license.
+The CDP, DTP and EDP modules adapt dpkt's cdp.py, dtp.py and edp.py, including
+their constants, under the same retained upstream BSD license.
 The PPP and PPPoE facades adapt dpkt's ppp.py and pppoe.py under the same
 retained upstream BSD license.
 The AH and ESP facades adapt dpkt's ah.py and esp.py under the same retained

@@ -451,6 +451,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     dns::register(module)?;
     http::register(module)?;
     tls::register(module)?;
+    cdp::register(module)?;
     sctp::register(module)?;
     vrrp::register(module)?;
     gre::register(module)?;
@@ -467,6 +468,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
+mod cdp;
 mod gre;
 mod sctp;
 mod tcp;

@@ -42,6 +42,8 @@ The [GRE and PIM modules](docs/gre-pim.md) parse and pack those packets the way
 dpkt 1.9.8 does, and IPv6 decodes them.
 The [IGMP and VRRP modules](docs/igmp-vrrp.md) parse and pack those messages the
 way dpkt 1.9.8 does, and IPv6 decodes them.
+The [CDP, DTP and EDP modules](docs/cdp-dtp-edp.md) parse and pack those
+packets the way dpkt 1.9.8 does, and Ethernet decodes them.
 The [PPP and PPPoE modules](docs/ppp.md) parse and pack those frames the way
 dpkt 1.9.8 does, and Ethernet decodes them.
 The [AH and ESP modules](docs/esp-ah.md) parse and pack those headers the way

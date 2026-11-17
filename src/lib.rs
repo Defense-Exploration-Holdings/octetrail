@@ -10,7 +10,9 @@ use std::fmt;
 use std::io::{self, Read};
 use std::iter::FusedIterator;
 
+pub mod cdp;
 pub mod dns;
+pub mod dtp;
 pub mod ethernet;
 pub mod gre;
 pub mod http;

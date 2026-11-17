@@ -3,8 +3,11 @@
 from . import ah as ah
 from . import arp as arp
 from . import capture, ethernet, ip, pcap, pcapng
+from . import cdp as cdp
 from . import crc32c as crc32c
 from . import dns as dns
+from . import dtp as dtp
+from . import edp as edp
 from . import esp as esp
 from . import gre as gre
 from . import http as http
@@ -58,6 +61,7 @@ __all__.append("ssl")
 __all__.extend(("ipip", "ipx", "llc", "stp"))
 __all__.extend(("icmp", "icmp6"))
 __all__.extend(("igmp", "vrrp"))
+__all__.extend(("cdp", "dtp", "edp"))
 __all__.extend(("ppp", "pppoe"))
 __all__.extend(("ah", "esp"))
 __all__.extend(("crc32c", "ospf", "sctp"))
