@@ -1,18 +1,16 @@
 #![no_main]
-//! Passive TLS record framing, handshake headers and ServerHello metadata.
+//! TLS record framing, hellos, certificate lists and SSLv2 splitting.
 use libfuzzer_sys::fuzz_target;
 use octetrail::tls;
 
 fuzz_target!(|data: &[u8]| {
-    if let Ok((spans, _)) = tls::records(data) {
-        for (start, end) in spans {
-            if let Some(raw) = data.get(start..end) {
-                if let Ok(record) = tls::Record::parse(raw) {
-                    let _ = tls::Handshake::parse(record.data);
-                }
-            }
-        }
+    let _ = tls::multi_factory(data);
+    let _ = tls::tls_records(data);
+    let _ = tls::Hello::client(data);
+    let _ = tls::Hello::server(data);
+    let _ = tls::certificates(data);
+    let _ = tls::extensions(data, 0);
+    if let [a, b, rest @ ..] = data {
+        let _ = tls::ssl2(u16::from_be_bytes([*a, *b]), rest);
     }
-    let _ = tls::Handshake::parse(data);
-    let _ = tls::ServerHello::parse(data);
 });

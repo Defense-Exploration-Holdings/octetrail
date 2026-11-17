@@ -34,8 +34,8 @@ The [HTTP module](docs/http.md) parses and packs HTTP/1.x requests and responses
 the way dpkt 1.9.8 does, without stream reassembly.
 The [Packet base class](docs/packet.md) is dpkt's, for writing your own header
 classes, with the checksum and hexdump helpers.
-The [passive TLS subset](docs/tls.md) adds explicit record framing and bounded
-ServerHello metadata, with other record and handshake data kept opaque.
+The [SSL and TLS module](docs/tls.md) parses and packs records, handshakes,
+hellos and certificate lists the way dpkt 1.9.8 does, with dpkt's cipher suite table.
 
 See the [0.3.1 release notes](docs/release-notes.md) for the changes
 and their compatibility limits.

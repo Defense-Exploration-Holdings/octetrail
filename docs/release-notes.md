@@ -57,6 +57,21 @@ IPv6 now parses and packs the way dpkt 1.9.8 does:
   `MAX_EXTENSIONS`, `MAX_EXTENSION_BYTES` and `ip6.LimitError` are removed, with
   the extension count and byte limits.
 
+SSL and TLS now parse and pack the way dpkt 1.9.8 does:
+
+- New classes: `TLS`, `SSL2`, `SSLFactory`, `TLSClientHello`, `TLSCertificate`,
+  `TLSChangeCipherSpec`, `TLSAlert`, `TLSAppData`, `TLSHelloRequest`,
+  `TLSUnknownHandshake` and its aliases, and the `ssl_ciphersuites` module.
+  Every handshake type dpkt knows is decoded.
+- `TLSServerHello` has `ciphersuite` as a `CipherSuite` object and the
+  deprecated `cipher_suite` and `compression` properties of dpkt.
+  `cipher_suite_code` is removed.
+- Records, handshakes and hellos are `Packet` subclasses. Errors follow dpkt,
+  except that `SSL3Exception` is also an `UnpackError` and an SSLv2 record
+  without a padding byte raises `SSL2IndexError`.
+- The size limits, `ssl.ParseLimitError`, `ssl.LimitError` and the `MAX_*`
+  constants are removed.
+
 ## 0.3.1
 
 First PyPI upload of the 0.3.0 changes. The code is the same as 0.3.0, which

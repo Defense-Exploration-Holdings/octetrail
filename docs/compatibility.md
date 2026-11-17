@@ -52,9 +52,9 @@ including chunked bodies, the way dpkt 1.9.8 does. No automatic application
 dispatch is added.
 The [Packet base class](packet.md) follows dpkt 1.9.8, including bit fields,
 `repr()`, `pprint()` and the checksum helpers.
-The [passive TLS subset](tls.md) adds bounded record framing and explicit
-ServerHello metadata, with opaque fallback for other handshake kinds. Its
-record-type dispatch inventory is deliberately partial.
+The [SSL and TLS module](tls.md) parses and packs records, handshakes, hellos,
+certificate lists and SSLv2 records the way dpkt 1.9.8 does. Two errors are
+also `UnpackError` subclasses where dpkt raises other classes.
 Other protocols, full header/block object models and constant inventories,
 filter execution, live capture and asynchronous I/O are outside the supported
 API. Import compatibility and distribution compatibility are separate: an
