@@ -182,7 +182,7 @@ def main():
     print(
         json.dumps(
             {
-                "scope": "curated project consumer, not upstream tests or CAPE",
+                "scope": "curated project consumer, not upstream tests",
                 "declared_scenarios": len(scenarios),
                 "eligible_checks_per_run": len(eligible),
                 "ineligible_not_executed": len(ineligible),

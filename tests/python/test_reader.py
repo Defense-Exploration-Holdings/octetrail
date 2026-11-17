@@ -6,10 +6,10 @@ import importlib.metadata
 import importlib.util
 import io
 import os
+import re
 import struct
 import sys
 import tempfile
-import tomllib
 import unittest
 import weakref
 from decimal import Decimal, Inexact, localcontext
@@ -19,6 +19,13 @@ import octetrail
 from octetrail import pcap
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def project_version():
+    """The [project] version from pyproject.toml, without tomllib (absent on Python 3.10)."""
+    text = (ROOT.parent / "pyproject.toml").read_text()
+    section = text.split("\n[project]\n", 1)[1].split("\n[", 1)[0]
+    return re.search(r'^version = "([^"]+)"$', section, re.M).group(1)
 
 
 def capture(records=(), *, nano=False, order="<", linktype=147):
@@ -41,7 +48,7 @@ class InstalledReaderTests(unittest.TestCase):
         )
         self.assertEqual(
             importlib.metadata.version("octetrail"),
-            tomllib.loads((ROOT.parent / "pyproject.toml").read_text())["project"]["version"],
+            project_version(),
         )
         self.assertIsNone(importlib.util.find_spec("dpkt"))
         distribution = importlib.metadata.distribution("octetrail")

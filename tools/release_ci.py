@@ -1,16 +1,26 @@
-"""Credential-free release gates and isolated Linux wheel build/test checks."""
+"""Credential-free release gates, source checks and checks of the collected release files."""
 
 import argparse
 import ast
 import hashlib
-import importlib.metadata
 import json
 import os
 import re
 import subprocess
 import sys
+import tarfile
 import tempfile
-import tomllib
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10 runs only the probes, which read no TOML.
+
+    class tomllib:
+        @staticmethod
+        def loads(_text):
+            raise SystemExit("reading pyproject.toml needs Python 3.11 or later")
+
+
 import zipfile
 from email.parser import BytesParser
 from pathlib import Path
@@ -111,61 +121,104 @@ def gate():
     print("release gate: " + ("protected tag verified" if candidate else "build/test only"))
 
 
+# Platform tags of the release wheels, keyed by build name. Every wheel uses the stable ABI
+# (abi3) from CPython 3.10, so one wheel per platform covers every later CPython.
+PLATFORMS = {
+    "linux-x86_64": "manylinux2014_x86_64.manylinux_2_17_x86_64",
+    "linux-aarch64": "manylinux2014_aarch64.manylinux_2_17_aarch64",
+    "musllinux-x86_64": "musllinux_1_2_x86_64",
+    "musllinux-aarch64": "musllinux_1_2_aarch64",
+    "macos-x86_64": "macosx_10_12_x86_64",
+    "macos-arm64": "macosx_11_0_arm64",
+    "windows-x64": "win_amd64",
+    "windows-arm64": "win_arm64",
+}
+ABI = "cp310-abi3"
+TEST_PYTHONS = ((3, 10), (3, 14))
+
+
 def expected_names(version):
     require(bool(VERSION.fullmatch(version)), "version_format")
-    return {
-        cp: f"octetrail-{version}-{cp}-{cp}-manylinux_2_34_x86_64.whl" for cp in ("cp312", "cp313")
-    }
+    names = {key: f"octetrail-{version}-{ABI}-{tag}.whl" for key, tag in PLATFORMS.items()}
+    names["sdist"] = f"octetrail-{version}.tar.gz"
+    return names
 
 
-def validate_wheels(directory, root, version):
-    names = expected_names(version)
-    require({p.name for p in directory.iterdir()} == set(names.values()), "wheel_inventory")
+def legal_files(root):
     legal = [root / "LICENSE", root / "NOTICE"]
-    legal += [p for p in (root / "licenses").rglob("*") if p.is_file()]
-    hashes = {}
-    for cp, name in names.items():
-        path = directory / name
-        require(path.is_file() and not path.is_symlink(), "wheel_type")
-        with zipfile.ZipFile(path) as archive:
-            members = archive.namelist()
-            require(len(set(members)) == len(members), "wheel_duplicate")
-            require(archive.testzip() is None, "wheel_crc")
+    legal += sorted(p for p in (root / "licenses").rglob("*") if p.is_file())
+    return legal
+
+
+def validate_wheel(path, root, version, platform):
+    with zipfile.ZipFile(path) as archive:
+        members = archive.namelist()
+        require(len(set(members)) == len(members), "wheel_duplicate")
+        require(archive.testzip() is None, "wheel_crc")
+        require(
+            all(not n.startswith("/") and ".." not in Path(n).parts for n in members),
+            "wheel_path",
+        )
+        prefix = f"octetrail-{version}.dist-info/"
+        meta = BytesParser().parsebytes(archive.read(prefix + "METADATA"))
+        require(meta["Name"] == "octetrail" and meta["Version"] == version, "wheel_metadata")
+        wheel = BytesParser().parsebytes(archive.read(prefix + "WHEEL"))
+        tags = sorted(f"{ABI}-{tag}" for tag in platform.split("."))
+        require(sorted(wheel.get_all("Tag") or []) == tags, "wheel_tag")
+        for source in legal_files(root):
+            relative = source.relative_to(root).as_posix()
             require(
-                all(not n.startswith("/") and ".." not in Path(n).parts for n in members),
-                "wheel_path",
+                archive.read(prefix + "licenses/" + relative) == source.read_bytes(),
+                f"wheel_legal_bytes: {path.name} {relative}",
             )
-            prefix = f"octetrail-{version}.dist-info/"
-            meta = BytesParser().parsebytes(archive.read(prefix + "METADATA"))
-            require(meta["Name"] == "octetrail" and meta["Version"] == version, "wheel_metadata")
-            wheel = BytesParser().parsebytes(archive.read(prefix + "WHEEL"))
-            require(wheel.get_all("Tag") == [f"{cp}-{cp}-manylinux_2_34_x86_64"], "wheel_tag")
-            for source in legal:
-                require(
-                    archive.read(prefix + "licenses/" + source.relative_to(root).as_posix())
-                    == source.read_bytes(),
-                    "wheel_legal_bytes",
-                )
-        hashes[cp] = hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def validate_sdist(path, root, version):
+    top = f"octetrail-{version}"
+    with tarfile.open(path, "r:gz") as archive:
+        members = archive.getmembers()
+        names = [m.name for m in members]
+        require(len(set(names)) == len(names), "sdist_duplicate")
+        for member in members:
+            parts = Path(member.name).parts
+            require(
+                parts[:1] == (top,) and ".." not in parts and not member.name.startswith("/"),
+                "sdist_path",
+            )
+            require(member.isfile() or member.isdir(), "sdist_member_type")
+            require(
+                not any(part in {".git", ".github", "target", "dist"} for part in parts[1:]),
+                "sdist_private_path",
+            )
+        info = BytesParser().parsebytes(archive.extractfile(top + "/PKG-INFO").read())
+        require(info["Name"] == "octetrail" and info["Version"] == version, "sdist_metadata")
+        for source in [*legal_files(root), root / "Cargo.lock", root / "pyproject.toml"]:
+            member = archive.extractfile(top + "/" + source.relative_to(root).as_posix())
+            require(member is not None and member.read() == source.read_bytes(), "sdist_bytes")
+
+
+def validate_dist(directory, root, version):
+    """Exactly the expected wheels and sdist, each well formed; returns name -> SHA-256."""
+    names = expected_names(version)
+    require({p.name for p in directory.iterdir()} == set(names.values()), "dist_inventory")
+    hashes = {}
+    for key, name in names.items():
+        path = directory / name
+        require(path.is_file() and not path.is_symlink(), "dist_type")
+        if key == "sdist":
+            validate_sdist(path, root, version)
+        else:
+            validate_wheel(path, root, version, PLATFORMS[key])
+        hashes[name] = hashlib.sha256(path.read_bytes()).hexdigest()
     return hashes
 
 
-def build(interpreters):
-    version = source_version(ROOT)
-    require(importlib.metadata.version("maturin") == "1.16.0", "maturin_version")
-    require(len(interpreters) == 2, "interpreter_count")
-    for executable, expected in zip(interpreters, ((3, 12), (3, 13)), strict=True):
-        result = run(
-            executable,
-            "-I",
-            "-c",
-            "import sys;print(*sys.version_info[:2])",
-            capture_output=True,
-            text=True,
-        )
-        require(tuple(map(int, result.stdout.split())) == expected, "interpreter_version")
-    output = ROOT / "dist"
-    require(not output.exists() or not any(output.iterdir()), "output_not_empty")
+def manifest_text(hashes):
+    return "".join(f"{digest}  {name}\n" for name, digest in sorted(hashes.items()))
+
+
+def check():
+    """Source checks that do not depend on a built artifact."""
     run("cargo", "fetch", "--locked")
     run("cargo", "fmt", "--check")
     run(
@@ -195,31 +248,52 @@ def build(interpreters):
             "tests/release",
         )
     run(sys.executable, "-B", "-I", "-m", "unittest", "discover", "-s", "tests/release", "-v")
-    run(
-        sys.executable,
+    print("source checks passed")
+
+
+def interpreter_version(executable):
+    result = run(
+        executable,
         "-I",
-        "tools/build_wheels.py",
-        "--offline",
-        "--interpreter",
-        interpreters[0],
-        "--interpreter",
-        interpreters[1],
-        "--out",
-        output,
+        "-c",
+        "import sys;print(*sys.version_info[:2])",
+        capture_output=True,
+        text=True,
     )
+    return tuple(map(int, result.stdout.split()))
+
+
+def verify(directory, interpreters, manifest):
+    """Check the collected release files, then test the Linux x86-64 wheel against dpkt."""
+    version = source_version(ROOT)
+    require(len(interpreters) == len(TEST_PYTHONS), "interpreter_count")
+    for executable, expected in zip(interpreters, TEST_PYTHONS, strict=True):
+        require(interpreter_version(executable) == expected, "interpreter_version")
     names = expected_names(version)
-    wheels = [output / n for n in names.values()]
-    hashes = validate_wheels(output, ROOT, version)
+    hashes = validate_dist(directory, ROOT, version)
+    wheels = [directory / n for k, n in names.items() if k != "sdist"]
     run(sys.executable, "-I", "tools/check_wheel.py", *wheels)
-    run(sys.executable, "-I", "-m", "twine", "check", "--strict", *wheels)
-    for wheel in wheels:
+    run(sys.executable, "-I", "-m", "twine", "check", "--strict", *directory.iterdir())
+    # auditwheel analyses glibc wheels on this glibc host; musl wheels are tested in Alpine.
+    for key in ("linux-x86_64", "linux-aarch64"):
         audit = run(
-            sys.executable, "-I", "-m", "auditwheel", "show", wheel, capture_output=True, text=True
+            sys.executable,
+            "-I",
+            "-m",
+            "auditwheel",
+            "show",
+            directory / names[key],
+            capture_output=True,
+            text=True,
         )
         print(audit.stdout)
-        require('platform tag: "manylinux_2_34_x86_64"' in audit.stdout, "symbol_policy")
-    with tempfile.TemporaryDirectory(prefix="octetrail-release-test-") as directory:
-        temporary = Path(directory)
+        policy = PLATFORMS[key].split(".")[-1]
+        require(
+            re.search(r'platform tag[^"]*"' + re.escape(policy) + '"', audit.stdout) is not None,
+            "symbol_policy",
+        )
+    with tempfile.TemporaryDirectory(prefix="octetrail-release-test-") as temporary_name:
+        temporary = Path(temporary_name)
         oracles = []
         for v in ("1.9.6", "1.9.8"):
             env = temporary / ("oracle-" + v)
@@ -242,8 +316,8 @@ def build(interpreters):
                 ROOT / f"tools/oracle-{v}.txt",
             )
             oracles.append(python)
-        for cp, executable in zip(names, interpreters, strict=True):
-            env = temporary / cp
+        for index, executable in enumerate(interpreters):
+            env = temporary / f"candidate-{index}"
             run(executable, "-I", "-m", "venv", "--without-pip", env)
             python = env / "bin/python"
             run(
@@ -257,7 +331,7 @@ def build(interpreters):
                 "install",
                 "--no-index",
                 "--no-deps",
-                output / names[cp],
+                directory / names["linux-x86_64"],
             )
             run(sys.executable, "-I", "-m", "pip", "--isolated", "--python", python, "check")
             run(
@@ -283,20 +357,26 @@ def build(interpreters):
                 "--oracle-198",
                 oracles[1],
             )
-    require(validate_wheels(output, ROOT, version) == hashes, "wheel_changed_during_checks")
-    write_outputs(hashes)
-    print("two exact wheel files passed release checks")
+    require(validate_dist(directory, ROOT, version) == hashes, "dist_changed_during_checks")
+    text = manifest_text(hashes)
+    manifest.write_text(text)
+    write_outputs({"manifest": hashlib.sha256(text.encode()).hexdigest()})
+    print(f"{len(hashes)} release files passed release checks")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("gate", "build"))
+    parser.add_argument("command", choices=("gate", "check", "verify"))
     parser.add_argument("--interpreter", action="append", default=[])
+    parser.add_argument("--dist", type=Path, default=ROOT / "dist")
+    parser.add_argument("--manifest", type=Path, default=ROOT / "SHA256SUMS")
     args = parser.parse_args()
     if args.command == "gate":
         gate()
+    elif args.command == "check":
+        check()
     else:
-        build(args.interpreter)
+        verify(args.dist, args.interpreter, args.manifest)
 
 
 if __name__ == "__main__":

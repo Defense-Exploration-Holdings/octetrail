@@ -7,14 +7,19 @@ name = "octetrail"
 version = "0.2.0"
 description = "Measured offline capture I/O subset from the OctetRail dpkt rewrite"
 readme = "README.md"
-requires-python = ">=3.12,<3.14"
+requires-python = ">=3.10"
 license = "BSD-3-Clause"
 license-files = ["LICENSE", "NOTICE", "licenses/**/*.txt", "licenses/README.md"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Rust",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: Implementation :: CPython",
 ]
 
@@ -25,6 +30,11 @@ module-name = "octetrail._native"
 bindings = "pyo3"
 locked = true
 strip = true
+exclude = [
+    { path = ".github/**", format = "sdist" },
+    { path = ".gitignore", format = "sdist" },
+    { path = ".gitattributes", format = "sdist" },
+]
 include = [
     { path = "src/**", format = "sdist" },
     { path = "Cargo.toml", format = "sdist" },
@@ -34,7 +44,7 @@ include = [
 ]
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py310"
 line-length = 100
 
 [tool.ruff.lint]

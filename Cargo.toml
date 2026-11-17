@@ -9,6 +9,7 @@ publish = false
 
 [workspace]
 members = ["bindings/python"]
+exclude = ["fuzz"]
 default-members = ["."]
 resolver = "2"
 

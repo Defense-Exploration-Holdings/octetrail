@@ -23,9 +23,17 @@ covered Python reader/writer subset without changing normal `dpkt` imports.
 The [UniversalReader guide](docs/universal-reader.md) describes measured
 1.9.8-style format selection over the native readers.
 
-Ethernet II, IPv4 and opaque TCP/UDP objects can be composed and decoded offline.
+Ethernet II, IPv4/IPv6 and opaque TCP/UDP objects can be composed and decoded offline.
 See the [composition guide](docs/composition.md) for dispatch, options, checksum
 update rules, resource bounds and measured compatibility limits.
+The [IPv6 and raw-IP guide](docs/ipv6.md) covers bounded extension framing,
+fragment handling and explicit version dispatch without changing capture iteration.
+The [explicit DNS API](docs/dns.md) adds bounded offline messages and common record
+fields without changing transport payloads or performing network lookups.
+The [explicit HTTP API](docs/http.md) provides bounded HTTP/1.x request/response
+messages with opaque bodies and explicit bytes fallback, without stream reassembly.
+The [passive TLS subset](docs/tls.md) adds explicit record framing and bounded
+ServerHello metadata, with other record and handshake data kept opaque.
 
 See the [0.2.0 release notes](docs/release-notes.md) for the composition changes
 and their compatibility limits.
@@ -125,4 +133,4 @@ resolver substitution is claimed.
 Original work is under the [BSD 3-Clause license](LICENSE). dpkt attribution and
 its applicable upstream license are retained in [NOTICE](NOTICE) and
 [licenses/dpkt.txt](licenses/dpkt.txt). The synthetic fixtures are original test
-data. No CAPE source or tests are redistributed here.
+data.

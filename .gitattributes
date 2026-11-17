@@ -1,0 +1,3 @@
+# Check out every text file with LF on all platforms, so wheels built on
+# Windows carry byte-identical license files and sources.
+* text=auto eol=lf
