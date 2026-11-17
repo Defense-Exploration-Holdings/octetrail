@@ -65,6 +65,8 @@ The [GRE and PIM modules](gre-pim.md) parse and pack those packets the way
 dpkt 1.9.8 does, with no declared differences.
 The [IGMP and VRRP modules](igmp-vrrp.md) parse and pack those messages the way
 dpkt 1.9.8 does, with no declared differences.
+The [CDP, DTP and EDP modules](cdp-dtp-edp.md) parse and pack those packets
+the way dpkt 1.9.8 does, with no declared differences.
 The [PPP and PPPoE modules](ppp.md) parse and pack those frames the way
 dpkt 1.9.8 does. A PPP frame that carries an IPv6 packet failing with
 The [AH and ESP modules](esp-ah.md) parse and pack those headers the way
