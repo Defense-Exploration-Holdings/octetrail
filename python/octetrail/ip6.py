@@ -8,7 +8,7 @@ import socket
 import struct
 from functools import partial
 
-from . import _native, icmp, icmp6, igmp, ip, stp, tcp, udp, vrrp
+from . import _native, ip, udp
 from .errors import NeedData, UnpackError
 from .packet import Packet
 
@@ -79,7 +79,7 @@ class IP6(Packet):
         )
     }
     __pprint_funcs__ = {"src": inet_to_str, "dst": inet_to_str}
-    _protosw = {}
+    _protosw = ip.IP._protosw
 
     def unpack(self, buf):
         Packet.unpack(self, buf)
@@ -333,20 +333,3 @@ def _extension(raw, row):
     _fill(ext, raw, row, lazy=True)
     ext._pack_hdr = partial(struct.pack, cls.__hdr_fmt__)
     return ext
-
-
-IP6._protosw.update(
-    {
-        0: ip.IP,
-        1: icmp.ICMP,
-        2: igmp.IGMP,
-        4: ip.IP,
-        ip.IP_PROTO_TCP: tcp.TCP,
-        ip.IP_PROTO_UDP: udp.UDP,
-        41: IP6,
-        58: icmp6.ICMP6,
-        112: vrrp.VRRP,
-        # dpkt maps IP_PROTO_STP (118, Schedule Transfer) to the Spanning Tree class.
-        118: stp.STP,
-    }
-)

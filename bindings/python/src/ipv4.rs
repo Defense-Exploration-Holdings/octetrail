@@ -1,113 +1,48 @@
-use pyo3::exceptions::{PyException, PyMemoryError, PyValueError};
+use pyo3::exceptions::{PyException, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
 pyo3::create_exception!(_native, Ipv4UnpackError, PyException);
 
-type Fields<'py> = (
-    u8,
-    u8,
-    u16,
-    u16,
-    u16,
-    u8,
-    u8,
-    u16,
-    Bound<'py, PyBytes>,
-    Bound<'py, PyBytes>,
-);
-
-fn error(error: octetrail::ipv4::Error) -> PyErr {
-    use octetrail::ipv4::Error;
-    match error {
-        error @ Error::Truncated { .. } => super::TruncatedError::new_err(error.to_string()),
-        Error::InvalidHeaderLength => Ipv4UnpackError::new_err(error.to_string()),
-        Error::Allocation => PyMemoryError::new_err(error.to_string()),
-        error => PyValueError::new_err(error.to_string()),
+/// Where the payload of a datagram starts and ends, as dpkt 1.9.8 slices it. The
+/// options run from the end of the fixed header to the payload start.
+#[pyfunction]
+fn _ipv4_layout(raw: &Bound<'_, PyBytes>) -> PyResult<(usize, usize)> {
+    use octetrail::ipv4::{Error, Packet, HEADER_LEN};
+    match Packet::parse(raw.as_bytes()) {
+        Ok(packet) => {
+            let start = HEADER_LEN + packet.opts.len();
+            Ok((start, start + packet.data.len()))
+        }
+        Err(error @ Error::Truncated { .. }) => {
+            Err(super::TruncatedError::new_err(error.to_string()))
+        }
+        Err(error) => Err(Ipv4UnpackError::new_err(error.to_string())),
     }
 }
 
-fn header(fields: Fields<'_>) -> octetrail::ipv4::Header {
-    fn address(bytes: &[u8]) -> [u8; 4] {
-        let mut output = [0; 4];
-        let n = bytes.len().min(4);
-        output[..n].copy_from_slice(&bytes[..n]);
-        output
-    }
-    octetrail::ipv4::Header {
-        version_ihl: fields.0,
-        tos: fields.1,
-        total_length: fields.2,
-        id: fields.3,
-        flags_offset: fields.4,
-        ttl: fields.5,
-        protocol: fields.6,
-        checksum: fields.7,
-        src: address(fields.8.as_bytes()),
-        dst: address(fields.9.as_bytes()),
-    }
+/// Internet checksum of a buffer, in network byte order.
+#[pyfunction]
+fn _inet_checksum(raw: &Bound<'_, PyBytes>) -> u16 {
+    octetrail::ipv4::checksum(raw.as_bytes())
 }
 
+/// TCP or UDP checksum over a packed pseudoheader and the transport bytes.
 #[pyfunction]
-fn _ipv4_unpack<'py>(
-    py: Python<'py>,
-    raw: &Bound<'py, PyBytes>,
-) -> PyResult<(Fields<'py>, Bound<'py, PyBytes>, Bound<'py, PyBytes>)> {
-    let packet = octetrail::ipv4::Packet::parse(raw.as_bytes()).map_err(error)?;
-    let h = packet.header;
-    Ok((
-        (
-            h.version_ihl,
-            h.tos,
-            h.total_length,
-            h.id,
-            h.flags_offset,
-            h.ttl,
-            h.protocol,
-            h.checksum,
-            PyBytes::new(py, &h.src),
-            PyBytes::new(py, &h.dst),
-        ),
-        PyBytes::new(py, packet.opts),
-        PyBytes::new(py, packet.data),
-    ))
-}
-
-#[pyfunction]
-fn _ipv4_header<'py>(py: Python<'py>, fields: Fields<'py>) -> PyResult<Bound<'py, PyBytes>> {
-    Ok(PyBytes::new(py, &header(fields).to_bytes()))
-}
-
-#[pyfunction]
-fn _ipv4_pack<'py>(
-    py: Python<'py>,
-    fields: Fields<'py>,
-    opts: &Bound<'py, PyBytes>,
-    data: &Bound<'py, PyBytes>,
-) -> PyResult<(Bound<'py, PyBytes>, u16, u16)> {
-    let mut packet = octetrail::ipv4::Packet {
-        header: header(fields),
-        opts: opts.as_bytes(),
-        data: data.as_bytes(),
-    };
-    let raw = packet.to_bytes().map_err(error)?;
-    Ok((
-        PyBytes::new(py, &raw),
-        packet.header.total_length,
-        packet.header.checksum,
-    ))
-}
-
-#[pyfunction]
-fn _ipv4_transport_checksum(fields: Fields<'_>, data: &Bound<'_, PyBytes>) -> PyResult<u16> {
-    let h = header(fields);
-    octetrail::ipv4::transport_checksum(h.src, h.dst, h.protocol, data.as_bytes()).map_err(error)
+fn _ipv4_transport_checksum(
+    pseudo: &Bound<'_, PyBytes>,
+    data: &Bound<'_, PyBytes>,
+) -> PyResult<u16> {
+    let pseudo: &[u8; 12] = pseudo
+        .as_bytes()
+        .try_into()
+        .map_err(|_| PyValueError::new_err("pseudoheader must be 12 bytes"))?;
+    Ok(octetrail::ipv4::pseudo_checksum(pseudo, data.as_bytes()))
 }
 
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_function(wrap_pyfunction!(_ipv4_unpack, module)?)?;
-    module.add_function(wrap_pyfunction!(_ipv4_header, module)?)?;
-    module.add_function(wrap_pyfunction!(_ipv4_pack, module)?)?;
+    module.add_function(wrap_pyfunction!(_ipv4_layout, module)?)?;
+    module.add_function(wrap_pyfunction!(_inet_checksum, module)?)?;
     module.add_function(wrap_pyfunction!(_ipv4_transport_checksum, module)?)?;
     module.add("Ipv4UnpackError", module.py().get_type::<Ipv4UnpackError>())?;
     Ok(())

@@ -208,3 +208,26 @@ fn pseudoheader_known_udp_words_and_length_bound() {
         Error::TooLarge
     );
 }
+
+#[test]
+fn packed_pseudoheader_matches_field_form_and_maps_udp_zero() {
+    let src = [192, 0, 2, 1];
+    let dst = [198, 51, 100, 2];
+    let data = b"\x00\x6f\x00\xde\x00\x0e\x00\x00foobar";
+    let mut pseudo = [0u8; 12];
+    pseudo[..4].copy_from_slice(&src);
+    pseudo[4..8].copy_from_slice(&dst);
+    pseudo[9] = 17;
+    pseudo[10..].copy_from_slice(&(data.len() as u16).to_be_bytes());
+    assert_eq!(
+        octetrail::ipv4::pseudo_checksum(&pseudo, data),
+        octetrail::ipv4::transport_checksum(src, dst, 17, data).unwrap()
+    );
+    // A pseudoheader and payload whose sum folds to zero.
+    let zero = [0xff; 12];
+    let mut udp = zero;
+    udp[9] = 17;
+    let complement = !checksum(&udp);
+    let fill = (!complement).to_be_bytes();
+    assert_eq!(octetrail::ipv4::pseudo_checksum(&udp, &fill), u16::MAX);
+}

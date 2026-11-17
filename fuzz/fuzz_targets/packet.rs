@@ -25,6 +25,9 @@ fn network(data: &[u8]) {
         transport(packet.header.protocol, packet.data);
         let _ = packet.to_bytes();
     }
+    if let Some((pseudo, rest)) = data.split_first_chunk::<12>() {
+        let _ = ipv4::pseudo_checksum(pseudo, rest);
+    }
     if let Ok(packet) = ipv6::Packet::parse(data) {
         if let Some(protocol) = packet.next {
             transport(protocol, &data[packet.rest.0..packet.rest.1]);

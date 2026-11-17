@@ -82,26 +82,27 @@ class CompositionTests(unittest.TestCase):
         ):
             with self.subTest(error=type(error).__name__):
                 with (
-                    patch.object(ip._native, "_ipv4_unpack", side_effect=error) as unpack,
+                    patch.object(ip._native, "_ipv4_layout", side_effect=error) as layout,
                     self.assertRaises(type(error)) as raised,
                 ):
                     ethernet.Ethernet(raw)
                 self.assertIs(raised.exception, error)
-                unpack.assert_called_once_with(bytes(20))
+                layout.assert_called_once_with(bytes(20))
 
     def test_options_pack_as_assigned_and_object_cycles_fail(self):
         # dpkt packs IPv4 and TCP options as assigned, whatever hl or off says.
         self.assertEqual(len(bytes(ip.IP(hl=15, opts=b"\x01" * 44))), 64)
         self.assertEqual(len(bytes(tcp.TCP(off=15, opts=b"\x01" * 44))), 64)
-        for packet in (ip.IP(), tcp.TCP()):
-            packet.data = packet
-            with self.assertRaises(TypeError):
-                bytes(packet)
-        # Ethernet packs its payload the way dpkt's Packet does, without a cycle check.
-        packet = ethernet.Ethernet()
+        packet = tcp.TCP()
         packet.data = packet
-        with self.assertRaises(RecursionError):
+        with self.assertRaises(TypeError):
             bytes(packet)
+        # IPv4 and Ethernet pack their payload the way dpkt's Packet does, without
+        # a cycle check.
+        for packet in (ip.IP(), ethernet.Ethernet()):
+            packet.data = packet
+            with self.assertRaises(RecursionError):
+                bytes(packet)
 
     def test_udp_length_is_caller_owned_and_zero_checksum_maps_to_ones(self):
         case = next(c for c in F.fixtures() if c["id"] == "udp_zero_checksum_maps_to_ones")

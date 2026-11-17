@@ -7,6 +7,7 @@ from . import icmp as icmp
 from . import icmp6 as icmp6
 from . import igmp as igmp
 from . import ip6 as ip6
+from . import ipip as ipip
 from . import ipx as ipx
 from . import llc as llc
 from . import packet as packet
@@ -44,8 +45,11 @@ __all__.append("http")
 
 __all__.append("ssl")
 
-__all__.extend(("ipx", "llc", "stp"))
+__all__.extend(("ipip", "ipx", "llc", "stp"))
 __all__.extend(("icmp", "icmp6"))
 __all__.extend(("igmp", "vrrp"))
 
 __all__.extend(("Packet", "hexdump", "in_cksum", "in_cksum_add", "in_cksum_done", "packet"))
+
+# As in dpkt, the protocol tables are filled once every module is loaded.
+ip._mod_init()

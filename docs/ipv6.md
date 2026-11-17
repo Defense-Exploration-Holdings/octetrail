@@ -52,7 +52,7 @@ The version is not checked.
    ICMP, ICMPv6, IGMP and VRRP are decoded, and `.tcp`, `.udp`, `.ip`, `.ip6`,
    `.icmp`, `.icmp6`, `.igmp` or `.vrrp` is set. As in dpkt, protocol 118 decodes as the Spanning Tree `STP`
    class. Other protocols, and payloads that raise `UnpackError`, stay bytes. `IP6.set_proto` adds a
-   class. A UDP payload larger than 65535 bytes, possible when `plen` is 0, is
+   class. The table is shared with `IP`, as in dpkt. A UDP payload larger than 65535 bytes, possible when `plen` is 0, is
    decoded as UDP without the standalone UDP size limit and packs back as it
    is. dpkt also decodes GRE, OSPF, PIM and SCTP, which
    OctetRail does not have yet.
