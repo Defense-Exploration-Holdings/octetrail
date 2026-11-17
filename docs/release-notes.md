@@ -1,5 +1,10 @@
 # Release notes
 
+## 0.5.1
+
+0.5.1 carries the 0.5.0 changes below. 0.5.0 was never published, because
+its release build did not finish. The code is the same as 0.5.0.
+
 ## 0.5.0
 
 Breaking changes:
