@@ -1,5 +1,14 @@
 # Release notes
 
+## Unreleased
+
+OSPF and SCTP now parse and pack the way dpkt 1.9.8 does:
+
+- New modules: `octetrail.ospf` with `OSPF`, `octetrail.sctp` with `SCTP`,
+  `Chunk` and dpkt's chunk type constants, and `octetrail.crc32c`. Zero OSPF
+  and SCTP checksums are computed when packing.
+- IPv4 and IPv6 decode protocol 89 as OSPF and 132 as SCTP.
+
 ## 0.5.1
 
 0.5.1 carries the 0.5.0 changes below. 0.5.0 was never published, because

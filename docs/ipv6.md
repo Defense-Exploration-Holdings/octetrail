@@ -49,12 +49,11 @@ The version is not checked.
    subclasses both `UnpackError` and `AttributeError`, so Ethernet keeps the
    payload as bytes.
 4. Otherwise the rest is decoded with `IP6.get_proto(p)`. TCP, UDP, IPv4, IPv6,
-   ICMP, ICMPv6, IGMP, VRRP, GRE and PIM are decoded, and the attribute named
-   after the class, such as `.tcp`, `.icmp6` or `.gre`, is set. As in dpkt, protocol 118 decodes as the Spanning Tree `STP`
+   ICMP, ICMPv6, IGMP, OSPF, SCTP, VRRP, GRE and PIM are decoded, and the
+   attribute named after the class, such as `.tcp`, `.icmp6` or `.gre`, is set. As in dpkt, protocol 118 decodes as the Spanning Tree `STP`
    class. Other protocols, and payloads that raise `UnpackError`, stay bytes. `IP6.set_proto` adds a
    class. The table is shared with `IP`, as in dpkt. A UDP payload larger than 65535 bytes, possible when `plen` is 0, is
-   decoded as UDP and packs back as it is. dpkt also decodes OSPF and SCTP, which
-   OctetRail does not have yet.
+   decoded as UDP and packs back as it is.
 
 ## Errors
 
