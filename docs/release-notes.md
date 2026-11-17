@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+AH and ESP now parse and pack the way dpkt 1.9.8 does:
+
+- New modules: `octetrail.ah` with `AH` and `octetrail.esp` with `ESP`.
+- IPv4 decodes protocol 51 as AH and 50 as ESP. An AH header decodes its
+  next header through the IP protocol table.
+- An AH header whose inner IPv6 packet raises `ip6.FragmentOffsetError` keeps
+  that packet as bytes, where dpkt raises `AttributeError`.
+
 OSPF and SCTP now parse and pack the way dpkt 1.9.8 does:
 
 - New modules: `octetrail.ospf` with `OSPF`, `octetrail.sctp` with `SCTP`,
