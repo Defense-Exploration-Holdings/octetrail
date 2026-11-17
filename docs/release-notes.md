@@ -1,5 +1,23 @@
 # Release notes
 
+## Unreleased
+
+DNS now parses and packs the way dpkt 1.9.8 does:
+
+- A name that runs past the end raises `NeedData`. A short fixed field, a forward
+  pointer, an over-long name, a reserved label form or an unsupported record type
+  raises `UnpackError`.
+- `rdata` is cut to the bytes present, and `rlen` keeps the declared length.
+  Bytes after the declared sections are dropped, and `data` is not packed.
+- A nonempty `rdata` packs as it is for every record type. Clear it to pack
+  changed typed fields. MX `preference` is a one-item tuple when parsed.
+- Names keep dots inside labels and allow 255 label bytes. Packing writes labels
+  without checking them, as `pack_name` does.
+- The 1024-record cap, the 65535-byte message cap and the 128-pointer cap are
+  gone. A work budget still raises `ParseLimitError`.
+- New: `dns.pack_name`, `dns.unpack_name` and the remaining `DNS_RCODE_*`
+  constants. `dns.MAX_RECORDS` and `dns.MAX_MESSAGE_BYTES` are removed.
+
 ## 0.3.1
 
 First PyPI upload of the 0.3.0 changes. The code is the same as 0.3.0, which

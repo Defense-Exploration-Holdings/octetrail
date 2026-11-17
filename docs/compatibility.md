@@ -46,9 +46,8 @@ opaque IP/TCP options and ordinary IPv4/transport checksum updates. The
 [IPv6/raw-IP subset](ipv6.md) adds base fields, ordered opaque extensions,
 bounded transport dispatch and explicit version selection. Non-atomic IPv6
 fragments remain bytes.
-The [explicit DNS subset](dns.md) covers a standard message header, questions,
-common record fields and bounded name compression. It preserves opaque unknown
-RDATA and documents serialization differences. It does not add transport dispatch.
+The [DNS module](dns.md) parses and packs messages, questions, records and
+compressed names the way dpkt 1.9.8 does. It does not add transport dispatch.
 The [explicit HTTP subset](http.md) covers HTTP/1.0 and HTTP/1.1 request/response
 fields and Content-Length or Content-Type body selection, with caller lengths
 retained and transfer encoding deferred. No automatic application dispatch is added.

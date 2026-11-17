@@ -1,4 +1,4 @@
-"""Independent benign DNS messages and installed-provider observations."""
+"""Independent DNS messages decoded by dpkt 1.9.6, 1.9.8 and OctetRail, which must agree."""
 
 import argparse
 import importlib.metadata
@@ -219,31 +219,29 @@ def cases():
 
 
 def expected(case, module):
-    if case["category"] == "unknown" and module == "dpkt":
+    """What dpkt 1.9.8 reports for a fixture; OctetRail must match it exactly."""
+    if case["category"] == "unknown":
         return {"error": "UnpackError"}
     wire = bytes.fromhex(case["wire"])
     tail = case["tail"]
-    if case["category"] == "trailing" and module == "dpkt":
+    if case["category"] == "trailing":
         wire = wire[:-4]
         tail = ""
     if case["category"] == "rebased":
-        if module == "octetrail":
-            wire = bytes.fromhex(next(c["wire"] for c in cases() if c["id"] == "rr-5"))
-        else:
-            wire = (
-                header([1, 1, 0, 0])
-                + QN
-                + struct.pack("!HH", 5, 1)
-                + b"\xc0\x0c"
-                + struct.pack("!HHIH", 5, 1, 60, len(fullname("alias.example")))
-                + fullname("alias.example")
-            )
+        # Questions and owners are recompressed; the raw name RDATA is copied.
+        wire = (
+            header([1, 1, 0, 0])
+            + QN
+            + struct.pack("!HH", 5, 1)
+            + b"\xc0\x0c"
+            + struct.pack("!HHIH", 5, 1, 60, len(fullname("alias.example")))
+            + fullname("alias.example")
+        )
     sections = json.loads(json.dumps(case["sections"]))
-    if module == "dpkt":
-        for rows in sections:
-            for record in rows:
-                if record["type"] == 15:
-                    record["attrs"]["preference"] = [record["attrs"]["preference"]]
+    for rows in sections:
+        for record in rows:
+            if record["type"] == 15:
+                record["attrs"]["preference"] = [record["attrs"]["preference"]]
     return {
         "id": case["id_value"],
         "op": case["op"],
@@ -335,25 +333,12 @@ def review_checks(package, module):
     else:
         raise ValueError("incomplete declared sections accepted")
     complete = minimum + b"\0\0\1\0\1" * 1025
-    if module == "octetrail":
-        try:
-            package.dns.DNS(complete)
-        except package.dns.ParseLimitError as error:
-            C.require(
-                all(isinstance(error, cls) for cls in (package.UnpackError, ValueError))
-                and isinstance(error, package.dns.LimitError),
-                "parse resource exception families",
-            )
-        else:
-            raise ValueError("DNS parse record limit missing")
-    else:
-        C.require(len(package.dns.DNS(complete).qd) == 1025, "reference count limit difference")
+    C.require(len(package.dns.DNS(complete).qd) == 1025, "complete 1025-question message")
     return {
         "large_response_records": 768,
         "large_response_bytes": len(wire),
         "address_edit_sequences": 2,
         "minimum_size_check": 1,
-        "count_limit": "ParseLimitError" if module == "octetrail" else "unbounded reference",
     }
 
 
@@ -409,10 +394,7 @@ def exercise(package, module):
             + struct.pack("!HHIH", kind, 1, 60, len(rdata))
             + rdata
         )
-        C.require(
-            bytes(message) == (want if module == "octetrail" else bytes.fromhex(case["wire"])),
-            "structured mutation precedence",
-        )
+        C.require(bytes(message) == bytes.fromhex(case["wire"]), "raw rdata precedence")
         mutations[str(kind)] = bytes(message).hex()
         message.an[0].rdata = b""
         if kind == 16:
@@ -490,11 +472,11 @@ def main():
             {
                 "fixtures": len(cases()),
                 "equal_cases": sum(c["category"] == "equal" for c in cases()),
-                "declared_fixture_differences": [
+                "fixtures_matching_dpkt_quirks": [
                     c["id"] for c in cases() if c["category"] != "equal"
                 ],
                 "constructor_cases_per_provider": 12,
-                "structured_mutation_differences": 2,
+                "raw_rdata_precedence_sequences": 2,
                 "header_flag_mutations": 1,
                 "review_large_response_records_per_provider": 768,
                 "review_address_edits_per_provider": 2,
