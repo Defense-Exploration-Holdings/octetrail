@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+NetBIOS now parses and packs the way dpkt 1.9.8 does:
+
+- New module: `octetrail.netbios`, with `NS` (a `DNS` subclass), `Session`,
+  `Datagram`, `encode_name`, `decode_name`, `node_to_service_name` and dpkt's
+  constants.
+- A NODE STATUS record with empty resource data raises
+  `netbios.NodeStatusError`, an `UnpackError` and `IndexError` subclass, where
+  dpkt raises `IndexError`.
+
 DNS now follows dpkt 1.9.8's classes:
 
 - API: `DNS`, `DNS.Q` and `DNS.RR` are `Packet` subclasses with dpkt's

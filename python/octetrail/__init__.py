@@ -20,6 +20,7 @@ from . import ipip as ipip
 from . import ipx as ipx
 from . import llc as llc
 from . import loopback as loopback
+from . import netbios as netbios
 from . import ntp as ntp
 from . import ospf as ospf
 from . import packet as packet
@@ -72,6 +73,7 @@ __all__.append("ssl")
 __all__.extend(("ipip", "ipx", "llc", "stp"))
 __all__.extend(("icmp", "icmp6"))
 __all__.extend(("igmp", "vrrp"))
+__all__.append("netbios")
 __all__.extend(("radius", "rtp", "stun", "tpkt"))
 __all__.extend(("hsrp", "ntp", "rip", "tftp"))
 __all__.extend(("cdp", "dtp", "edp"))
