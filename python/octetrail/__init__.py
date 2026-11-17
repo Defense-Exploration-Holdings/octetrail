@@ -1,5 +1,6 @@
 """A dpkt rewrite with native offline capture and bounded packet composition."""
 
+from . import arp as arp
 from . import capture, ethernet, ip, pcap, pcapng
 from . import dns as dns
 from . import http as http
@@ -48,6 +49,7 @@ __all__.append("ssl")
 __all__.extend(("ipip", "ipx", "llc", "stp"))
 __all__.extend(("icmp", "icmp6"))
 __all__.extend(("igmp", "vrrp"))
+__all__.append("arp")
 
 __all__.extend(("Packet", "hexdump", "in_cksum", "in_cksum_add", "in_cksum_done", "packet"))
 

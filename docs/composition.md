@@ -6,7 +6,7 @@ aliases. Unknown Ethernet/IP protocols remain opaque bytes. Known children that
 raise `UnpackError` or `NeedData` also remain bytes; direct parsing still raises
 those errors. Resource, allocation and unexpected errors
 are not swallowed. Payloads below TCP/UDP remain bytes with no application
-dispatch. ARP remains unsupported. The separate [DNS API](dns.md) must be called
+dispatch. The separate [ARP module](arp.md) covers EtherType 0x0806. The separate [DNS API](dns.md) must be called
 explicitly and does not change transport payloads. This API performs no network
 operation.
 
