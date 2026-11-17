@@ -246,7 +246,9 @@ pub fn pack(head: &[u8], body: &[u8], response: bool) -> Result<Vec<u8>, Error> 
     if end != head.len() {
         return Err(Error::Format);
     }
-    if rows.iter().any(|(n, _)| n == "transfer-encoding") {
+    // Chunked bodies are unsupported. A header with no body (a 304, for instance, or
+    // any message without a body) packs as written, as it does in dpkt.
+    if !body.is_empty() && rows.iter().any(|(n, _)| n == "transfer-encoding") {
         return Err(Error::Unsupported);
     }
     let mut out = Vec::with_capacity(head.len() + body.len());
@@ -332,6 +334,12 @@ mod tests {
         let (h, p) = headers(raw, p).unwrap();
         assert_eq!(body(raw, p, &h, true), Err(Error::Unsupported));
         assert_eq!(pack(&raw[..p], b"note", true), Err(Error::Unsupported));
+        // A 304 has no body, so its Transfer-Encoding header parses and packs unchanged.
+        let raw = b"HTTP/1.1 304 Not Modified\r\nTransfer-Encoding: chunked\r\n\r\n";
+        let (_, p) = start(raw, true).unwrap();
+        let (h, p) = headers(raw, p).unwrap();
+        assert_eq!(body(raw, p, &h, false), Ok((&b""[..], &b""[..])));
+        assert_eq!(pack(&raw[..p], b"", true).unwrap(), raw);
     }
     #[test]
     fn field_grammar_validation_is_independent_of_message_rendering() {

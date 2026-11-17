@@ -17,8 +17,14 @@ import tempfile
 
 try:
     import tomllib
-except ModuleNotFoundError:  # Python 3.10: only release tooling reads TOML.
-    tomllib = None
+except ModuleNotFoundError:  # Python 3.10 runs only the probes, which read no TOML.
+
+    class tomllib:
+        @staticmethod
+        def loads(_text):
+            raise SystemExit("reading pyproject.toml needs Python 3.11 or later")
+
+
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]

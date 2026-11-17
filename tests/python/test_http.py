@@ -106,7 +106,7 @@ class HttpTests(unittest.TestCase):
         for obj in (
             http.Request(uri="/café"),
             http.Request(version="2.0"),
-            http.Request(headers={"Transfer-Encoding": "chunked"}),
+            http.Request(headers={"Transfer-Encoding": "chunked"}, body=b"note"),
         ):
             with self.assertRaises(PackError):
                 bytes(obj)
@@ -125,6 +125,14 @@ class HttpTests(unittest.TestCase):
         ):
             with self.assertRaises(TypeError):
                 operation()
+
+    def test_bodiless_transfer_encoding_response_round_trips(self):
+        raw = b"HTTP/1.1 304 Not Modified\r\nTransfer-Encoding: chunked\r\n\r\n"
+        response = http.decode(raw)
+        self.assertIsInstance(response, http.Response)
+        self.assertEqual(response.status, "304")
+        self.assertEqual(response.body, b"")
+        self.assertEqual(bytes(response), raw.replace(b"Transfer-Encoding", b"transfer-encoding"))
 
     def test_text_length_body_and_unread_tail_follow_reference_conventions(self):
         r = http.Response(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n\x00\xffTAIL")

@@ -59,9 +59,10 @@ bytes for parse failures, including parse-budget refusals. It does not copy an
 over-budget buffer or suppress programmer/allocation errors. It is not a stream
 iterator.
 
-Transfer-Encoding, chunking/trailers, HTTP/0.9, LF-only or unfinished heads,
+Transfer-Encoding framing, chunking/trailers, HTTP/0.9, LF-only or unfinished heads,
 folding, arbitrary method/version extensions, decompression and HTTP/2/3 are
-unsupported. The public dpkt Message base and file-based parser helpers are absent.
+unsupported. A Transfer-Encoding header on a message without a body, such as a
+304 response, parses and packs unchanged. The public dpkt Message base and file-based parser helpers are absent.
 
 `tools/http_differential.py` compares both hash-pinned dpkt 1.9.6/1.9.8 references
 and installed OctetRail. It checks 22 fixtures (18 equal and four explicit scope

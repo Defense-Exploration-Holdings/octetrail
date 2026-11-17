@@ -54,6 +54,9 @@ name. Serialization rebuilds a deterministic compression dictionary, preserving
 the covered ordinary wire outputs and using only representable 14-bit offsets.
 Compression dictionary keys ignore ASCII case, as in dpkt; a repeated suffix
 with different case can take the spelling of its first occurrence.
+Like dpkt 1.9.8, serialization also compresses the target name of SRV records,
+which RFC 2782 says must not be compressed. Parsers commonly accept both forms;
+this matches dpkt byte for byte rather than the RFC.
 The name limit is 255 wire bytes, including the terminating root byte; labels
 are at most 63 bytes. Message bytes are limited to 65535, total questions and
 records to 1024 and charged work bytes to 4 MiB. The work-step budget is
