@@ -67,6 +67,9 @@ The [GRE and PIM modules](gre-pim.md) parse and pack those packets the way
 dpkt 1.9.8 does, with no declared differences.
 The [IGMP and VRRP modules](igmp-vrrp.md) parse and pack those messages the way
 dpkt 1.9.8 does, with no declared differences.
+The [Portmap, Rx, TNS, Yahoo Messenger, SMB and RFB modules](small-apps.md)
+parse and pack those headers the way dpkt 1.9.8 does, with no declared
+differences.
 The [NetBIOS module](netbios.md) parses and packs the name, session and datagram
 services the way dpkt 1.9.8 does, except one declared difference for an empty
 NODE STATUS record.
