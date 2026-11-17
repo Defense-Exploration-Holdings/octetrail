@@ -38,6 +38,7 @@ from . import rip as rip
 from . import rtp as rtp
 from . import rx as rx
 from . import sctp as sctp
+from . import sip as sip
 from . import sll as sll
 from . import sll2 as sll2
 from . import smb as smb
@@ -93,6 +94,7 @@ __all__.extend(("ah", "esp"))
 __all__.extend(("crc32c", "ospf", "sctp"))
 __all__.extend(("gre", "pim"))
 __all__.append("arp")
+__all__.append("sip")
 __all__.append("telnet")
 __all__.extend(("aoe", "aoeata", "aoecfg"))
 __all__.extend(("loopback", "sll", "sll2"))
