@@ -12,14 +12,17 @@ use std::iter::FusedIterator;
 
 pub mod cdp;
 pub mod dhcp;
+pub mod diameter;
 pub mod dns;
 pub mod dtp;
 pub mod ethernet;
 pub mod gre;
 pub mod http;
+pub mod http2;
 pub mod ieee80211;
 pub mod ipv4;
 pub mod ipv6;
+pub mod netflow;
 pub mod pcapng;
 pub mod pcapng_writer;
 pub mod radius;

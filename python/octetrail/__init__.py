@@ -1,6 +1,7 @@
 """A dpkt rewrite with native offline capture and bounded packet composition."""
 
 from . import ah as ah
+from . import aim as aim
 from . import aoe as aoe
 from . import aoeata as aoeata
 from . import aoecfg as aoecfg
@@ -9,13 +10,16 @@ from . import capture, ethernet, ip, pcap, pcapng
 from . import cdp as cdp
 from . import crc32c as crc32c
 from . import dhcp as dhcp
+from . import diameter as diameter
 from . import dns as dns
 from . import dtp as dtp
 from . import edp as edp
 from . import esp as esp
 from . import gre as gre
+from . import gzip as gzip
 from . import hsrp as hsrp
 from . import http as http
+from . import http2 as http2
 from . import icmp as icmp
 from . import icmp6 as icmp6
 from . import ieee80211 as ieee80211
@@ -26,6 +30,7 @@ from . import ipx as ipx
 from . import llc as llc
 from . import loopback as loopback
 from . import netbios as netbios
+from . import netflow as netflow
 from . import ntp as ntp
 from . import ospf as ospf
 from . import packet as packet
@@ -33,6 +38,7 @@ from . import pim as pim
 from . import pmap as pmap
 from . import ppp as ppp
 from . import pppoe as pppoe
+from . import qq as qq
 from . import radiotap as radiotap
 from . import radius as radius
 from . import raw as raw
@@ -41,6 +47,7 @@ from . import rip as rip
 from . import rpc as rpc
 from . import rtp as rtp
 from . import rx as rx
+from . import sccp as sccp
 from . import sctp as sctp
 from . import sip as sip
 from . import sll as sll
@@ -98,6 +105,13 @@ __all__.extend(("ah", "esp"))
 __all__.extend(("crc32c", "ospf", "sctp"))
 __all__.extend(("gre", "pim"))
 __all__.append("arp")
+__all__.append("http2")
+__all__.append("gzip")
+__all__.append("netflow")
+__all__.append("diameter")
+__all__.append("qq")
+__all__.append("sccp")
+__all__.append("aim")
 __all__.extend(("ieee80211", "radiotap"))
 __all__.append("rpc")
 __all__.append("dhcp")

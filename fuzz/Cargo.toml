@@ -36,6 +36,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "diameter"
+path = "fuzz_targets/diameter.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "dhcp"
 path = "fuzz_targets/dhcp.rs"
 test = false
@@ -52,6 +59,20 @@ bench = false
 [[bin]]
 name = "http"
 path = "fuzz_targets/http.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "http2"
+path = "fuzz_targets/http2.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "netflow"
+path = "fuzz_targets/netflow.rs"
 test = false
 doc = false
 bench = false

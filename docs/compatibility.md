@@ -101,6 +101,21 @@ The [OSPF and SCTP modules](ospf-sctp.md) parse and pack those packets the way
 dpkt 1.9.8 does, with no declared differences.
 The [ARP module](arp.md) parses and packs ARP the way dpkt 1.9.8 does, with no
 declared differences.
+The [HTTP/2 module](http2.md) parses and packs frames the way dpkt 1.9.8 does.
+Its `HTTP2Exception` is also an `UnpackError`.
+The [gzip module](gzip.md) parses and packs gzip headers the way dpkt 1.9.8
+does. A file name that is not UTF-8 raises an error that is both an
+`UnpackError` and dpkt's `UnicodeDecodeError`.
+The [NetFlow module](netflow.md) parses and packs NetFlow exports the way dpkt
+1.9.8 does, with no declared differences.
+The [Diameter module](diameter.md) parses and packs Diameter the way dpkt 1.9.8
+does, with no declared differences.
+The [QQ module](qq.md) parses and packs QQ headers the way dpkt 1.9.8 does,
+with no declared differences.
+The [SCCP module](sccp.md) parses and packs Skinny messages the way dpkt 1.9.8
+does, with no declared differences.
+The [AIM module](aim.md) parses and packs OSCAR frames the way dpkt 1.9.8
+does, with no declared differences.
 The [IEEE 802.11 and radiotap modules](ieee80211-radiotap.md) parse and pack
 frames the way dpkt 1.9.8 does. Radiotap present words cut off by the buffer
 raise an error that is both an `UnpackError` and dpkt's `IndexError`.

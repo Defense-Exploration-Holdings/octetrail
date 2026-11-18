@@ -66,6 +66,17 @@ The [OSPF and SCTP modules](docs/ospf-sctp.md) parse and pack those packets the
 way dpkt 1.9.8 does, and IPv4 and IPv6 decode them.
 The [ARP module](docs/arp.md) parses and packs ARP the way dpkt 1.9.8 does, and
 Ethernet decodes it.
+The [HTTP/2 module](docs/http2.md) parses and packs HTTP/2 frames the way dpkt
+The [gzip module](docs/gzip.md) parses and packs gzip member headers the way dpkt
+The [NetFlow module](docs/netflow.md) parses and packs NetFlow version 1, 5, 6
+and 7 exports the way dpkt 1.9.8 does.
+The [Diameter module](docs/diameter.md) parses and packs Diameter messages and
+AVPs the way dpkt 1.9.8 does.
+The [QQ module](docs/qq.md) parses and packs QQ messenger headers the way dpkt
+The [SCCP module](docs/sccp.md) parses and packs Cisco Skinny messages the way
+dpkt 1.9.8 does.
+The [AIM module](docs/aim.md) parses and packs OSCAR FLAP and SNAC frames and
+TLVs the way dpkt 1.9.8 does.
 The [IEEE 802.11 and radiotap modules](docs/ieee80211-radiotap.md) parse and
 pack wireless frames and radiotap headers the way dpkt 1.9.8 does.
 The [RPC module](docs/rpc.md) parses and packs ONC RPC calls and replies the way
