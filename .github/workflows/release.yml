@@ -213,7 +213,10 @@ jobs:
         run: '"$BUILD_PY" -B -I tools/release_ci.py fallback'
 
   wheels-macos-arm64-fallback:
-    # The same steps as the wheel matrix, on the macOS 26 arm64 runner.
+    # The same steps as the wheel matrix, cross-compiling the arm64 wheel on the
+    # Intel macOS runner of the macos-x86_64 row, since arm64 runners can be
+    # unavailable for long stretches. The wheel cannot be imported on x86-64, so
+    # test is none: the matrix's own arm64 leg is the one that runs the tests.
     name: Wheel ${{ matrix.name }} on the fallback runner
     needs: macos-arm64-missing
     if: ${{ !cancelled() && needs.macos-arm64-missing.outputs.missing == 'true' }}
@@ -221,7 +224,7 @@ jobs:
       matrix:
         include:
           # compatibility and zig are empty, as they are for the macOS rows above.
-          - {name: macos-arm64, os: macos-26, target: aarch64-apple-darwin, deployment: '11.0', test: native, pythons: '3.10 3.14', compatibility: '', zig: false}
+          - {name: macos-arm64, os: macos-15-intel, target: aarch64-apple-darwin, deployment: '11.0', test: none, pythons: '3.10 3.14', compatibility: '', zig: false}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     permissions:

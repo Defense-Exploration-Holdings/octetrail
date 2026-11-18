@@ -24,7 +24,7 @@ def main():
     payload = json.load(sys.stdin)
     mapping = args.backend == "octetrail-test-map"
     if mapping:
-        assert args.version == importlib.metadata.version("octetrail") == "0.7.1"
+        assert args.version == importlib.metadata.version("octetrail") == "0.7.2"
         support = runpy.run_path(str(ROOT / "tools/capture_test_namespace.py"))
         context = support["mapped_capture_namespace"]()
     else:

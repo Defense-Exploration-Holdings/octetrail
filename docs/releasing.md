@@ -29,6 +29,11 @@ baselines. `auditwheel` checks the glibc wheels' symbol policy. Every wheel is
 also checked for its file records, package namespace, metadata, license files
 and the absence of build-machine paths.
 
+If GitHub does not assign the macOS 15 arm64 runner, the release workflow
+cross-compiles the macOS arm64 wheel on the macOS 15 Intel runner instead. That
+wheel gets the same file checks, but it cannot run on the build machine, so that
+release ships it without a test run on Apple silicon.
+
 ## Jobs
 
 1. `gate` decides, without credentials, whether this run may publish.

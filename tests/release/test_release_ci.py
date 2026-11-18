@@ -422,7 +422,7 @@ class WorkflowTests(unittest.TestCase):
             {"artifact-ids": "${{ needs.build.outputs.artifact-id }}", "path": "release"},
         )
 
-    def test_macos_arm64_fallback_repeats_the_wheel_steps_on_macos_26(self):
+    def test_macos_arm64_fallback_cross_builds_on_the_intel_runner(self):
         jobs = self.workflow["jobs"]
         primary, fallback = jobs["wheels"], jobs["wheels-macos-arm64-fallback"]
         self.assertEqual(fallback["steps"], primary["steps"])
@@ -430,7 +430,23 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(fallback[key], primary[key])
         [row] = fallback["strategy"]["matrix"]["include"]
         [arm] = [r for r in primary["strategy"]["matrix"]["include"] if r["name"] == "macos-arm64"]
-        self.assertEqual({**arm, "os": "macos-26", "compatibility": "", "zig": "false"}, row)
+        [intel] = [
+            r for r in primary["strategy"]["matrix"]["include"] if r["name"] == "macos-x86_64"
+        ]
+        # Cross-compiled on the Intel runner, so the wheel is built and checked
+        # but not imported: no test step runs for test "none".
+        self.assertEqual(
+            {**arm, "os": intel["os"], "test": "none", "compatibility": "", "zig": "false"}, row
+        )
+        self.assertEqual(intel["os"], "macos-15-intel")
+        self.assertEqual((row["target"], row["deployment"]), ("aarch64-apple-darwin", "11.0"))
+        test_steps = [
+            s for s in fallback["steps"] if s.get("name", "").startswith("Test the wheel")
+        ]
+        self.assertEqual(
+            sorted(s["if"] for s in test_steps),
+            ["matrix.test == 'alpine'", "matrix.test == 'native'"],
+        )
         self.assertNotIn("zig", arm)
         self.assertNotIn("compatibility", arm)
         self.assertEqual(arm["os"], "macos-15")

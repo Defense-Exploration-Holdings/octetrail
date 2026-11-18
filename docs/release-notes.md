@@ -1,5 +1,15 @@
 # Release notes
 
+## 0.7.2
+
+0.7.2 carries the 0.7.1 and 0.7.0 changes below. 0.7.1 was not published,
+because no macOS arm64 runner was available for its primary or fallback build.
+
+- When the macOS arm64 runner is not acquired, the release workflow now
+  cross-compiles the arm64 wheel on the Intel macOS runner, with the same
+  `macosx_11_0_arm64` tag and wheel checks. That wheel is not imported on the
+  build machine, because it cannot run on x86-64.
+
 ## 0.7.1
 
 0.7.1 also carries the 0.7.0 changes below. 0.7.0 was not published, because
