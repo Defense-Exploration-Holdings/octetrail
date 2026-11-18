@@ -62,6 +62,9 @@ def job_guard(expression, data):
     """
     results = []
     for term in expression.split("&&"):
+        if term.strip() == "!cancelled()":
+            results.append(not data.get("cancelled", False))
+            continue
         match = re.fullmatch(r"\s*([A-Za-z0-9_.-]+)\s+(==|!=)\s+(.+?)\s*", term)
         if not match:
             raise ValueError("unsupported test expression")
@@ -136,6 +139,9 @@ class PypiGateTests(unittest.TestCase):
             data = context()
             data["needs"]["build"]["result"] = status
             self.assertFalse(job_guard(JOB["if"], data))
+        data = context()
+        data["cancelled"] = True
+        self.assertFalse(job_guard(JOB["if"], data))
         for outputs in ({}, {"publish": "false", "artifact-id": "77"}, {"publish": "true"}):
             data = context()
             data["needs"]["build"]["outputs"] = outputs

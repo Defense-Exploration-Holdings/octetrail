@@ -5,7 +5,7 @@ describes the supported Enhanced Packet Block reader.
 The separate [classic writer guide](pcap-writer.md) describes output and file
 ownership, which differs from the borrowed Reader interface.
 
-The experimental distribution is `octetrail==0.6.1`, with an `octetrail` import.
+The experimental distribution is `octetrail==0.6.2`, with an `octetrail` import.
 It neither provides `dpkt` nor satisfies a dependency on `dpkt==1.9.6` or
 `dpkt==1.9.8`. No fallback imports upstream dpkt. The native core still has no
 third-party runtime dependencies. A separate PyO3 extension adapts Python binary

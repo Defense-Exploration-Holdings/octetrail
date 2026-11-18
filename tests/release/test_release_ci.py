@@ -584,7 +584,9 @@ class WorkflowTests(unittest.TestCase):
                 "ref_protected": True,
                 "run_attempt": 1,
             },
-            "needs": {"build": {"result": "success", "outputs": {"publish": "true", "artifact-id": "1"}}},
+            "needs": {
+                "build": {"result": "success", "outputs": {"publish": "true", "artifact-id": "1"}}
+            },
             "vars": {"WHEEL_RELEASES_ENABLED": "true", "PYPI_PUBLISHING_ENABLED": "true"},
         }
         for job in ("release", "pypi"):

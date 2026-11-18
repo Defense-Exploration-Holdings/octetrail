@@ -1,5 +1,10 @@
 # Release notes
 
+## 0.6.2
+
+0.6.2 carries the 0.6.1 and 0.6.0 changes below. 0.6.1 was never published,
+because its release lint step failed. The code is the same as 0.6.0.
+
 ## 0.6.1
 
 Fix the release workflow so it publishes when the macOS arm64 fallback is not
