@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-AIM now parses and packs the way dpkt 1.9.8 does: the new `octetrail.aim`
-module has `FLAP`, `SNAC` and `tlv`.
+SCCP now parses and packs the way dpkt 1.9.8 does: the new `octetrail.sccp`
+module has `SCCP`, dpkt's message classes and its message id constants.
 
 AH and ESP now parse and pack the way dpkt 1.9.8 does:
 
@@ -97,13 +97,6 @@ Portmap, Rx, TNS, Yahoo Messenger, SMB and RFB now parse and pack the way dpkt
 `octetrail.yahoo`, `octetrail.smb` and `octetrail.rfb` modules have dpkt's
 classes and constants.
 
-RPC now parses and packs the way dpkt 1.9.8 does: the new `octetrail.rpc`
-module has `RPC` and its call, reply and authentication classes, dpkt's
-constants and the XDR list helpers.
-
-SIP now parses and packs the way dpkt 1.9.8 does: the new `octetrail.sip`
-module has `Request` and `Response` on the HTTP classes.
-
 HTTP now follows dpkt 1.9.8's classes and errors:
 
 - API: `Message`, `Request` and `Response` are `Packet` subclasses with dpkt's
@@ -115,6 +108,16 @@ HTTP now follows dpkt 1.9.8's classes and errors:
   `http.HeaderTypeError` and `http.HeaderAttributeError`. A Content-Length or
   chunk size outside `Py_ssize_t` raises `http.LengthOverflowError`. Each is
   both an `UnpackError` and the builtin error dpkt raises, with dpkt's message.
+
+AIM now parses and packs the way dpkt 1.9.8 does: the new `octetrail.aim`
+module has `FLAP`, `SNAC` and `tlv`.
+
+RPC now parses and packs the way dpkt 1.9.8 does: the new `octetrail.rpc`
+module has `RPC` and its call, reply and authentication classes, dpkt's
+constants and the XDR list helpers.
+
+SIP now parses and packs the way dpkt 1.9.8 does: the new `octetrail.sip`
+module has `Request` and `Response` on the HTTP classes.
 
 DHCP now parses and packs the way dpkt 1.9.8 does: the new `octetrail.dhcp`
 module has `DHCP` and dpkt's constants, with the options read in Rust. An
