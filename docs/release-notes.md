@@ -2,11 +2,8 @@
 
 ## Unreleased
 
-IEEE 802.11 and radiotap now parse and pack the way dpkt 1.9.8 does: the new
-`octetrail.ieee80211` and `octetrail.radiotap` modules have dpkt's classes and
-constants, with information elements and radiotap present words read in Rust.
-Present words cut off by the buffer raise `radiotap.PresentFlagsError`, which is
-both an `UnpackError` and an `IndexError`.
+AIM now parses and packs the way dpkt 1.9.8 does: the new `octetrail.aim`
+module has `FLAP`, `SNAC` and `tlv`.
 
 AH and ESP now parse and pack the way dpkt 1.9.8 does:
 
@@ -100,10 +97,12 @@ Portmap, Rx, TNS, Yahoo Messenger, SMB and RFB now parse and pack the way dpkt
 `octetrail.yahoo`, `octetrail.smb` and `octetrail.rfb` modules have dpkt's
 classes and constants.
 
-DHCP now parses and packs the way dpkt 1.9.8 does: the new `octetrail.dhcp`
-module has `DHCP` and dpkt's constants, with the options read in Rust. An
-option type with no length byte raises `dhcp.MissingLengthError`, which is both
-an `UnpackError` and an `IndexError`.
+RPC now parses and packs the way dpkt 1.9.8 does: the new `octetrail.rpc`
+module has `RPC` and its call, reply and authentication classes, dpkt's
+constants and the XDR list helpers.
+
+SIP now parses and packs the way dpkt 1.9.8 does: the new `octetrail.sip`
+module has `Request` and `Response` on the HTTP classes.
 
 HTTP now follows dpkt 1.9.8's classes and errors:
 
@@ -117,17 +116,21 @@ HTTP now follows dpkt 1.9.8's classes and errors:
   chunk size outside `Py_ssize_t` raises `http.LengthOverflowError`. Each is
   both an `UnpackError` and the builtin error dpkt raises, with dpkt's message.
 
-SIP now parses and packs the way dpkt 1.9.8 does: the new `octetrail.sip`
-module has `Request` and `Response` on the HTTP classes.
+DHCP now parses and packs the way dpkt 1.9.8 does: the new `octetrail.dhcp`
+module has `DHCP` and dpkt's constants, with the options read in Rust. An
+option type with no length byte raises `dhcp.MissingLengthError`, which is both
+an `UnpackError` and an `IndexError`.
 
 Fixed:
 
 - IPv6 given a `bytearray` or `memoryview` keeps that type in `data` and in its
   extension header fields, as dpkt 1.9.8 does. Earlier releases returned bytes.
 
-RPC now parses and packs the way dpkt 1.9.8 does: the new `octetrail.rpc`
-module has `RPC` and its call, reply and authentication classes, dpkt's
-constants and the XDR list helpers.
+IEEE 802.11 and radiotap now parse and pack the way dpkt 1.9.8 does: the new
+`octetrail.ieee80211` and `octetrail.radiotap` modules have dpkt's classes and
+constants, with information elements and radiotap present words read in Rust.
+Present words cut off by the buffer raise `radiotap.PresentFlagsError`, which is
+both an `UnpackError` and an `IndexError`.
 
 ## 0.5.1
 
