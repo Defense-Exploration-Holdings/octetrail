@@ -66,6 +66,7 @@ The [OSPF and SCTP modules](docs/ospf-sctp.md) parse and pack those packets the
 way dpkt 1.9.8 does, and IPv4 and IPv6 decode them.
 The [ARP module](docs/arp.md) parses and packs ARP the way dpkt 1.9.8 does, and
 Ethernet decodes it.
+The [QQ module](docs/qq.md) parses and packs QQ messenger headers the way dpkt
 The [SCCP module](docs/sccp.md) parses and packs Cisco Skinny messages the way
 dpkt 1.9.8 does.
 The [AIM module](docs/aim.md) parses and packs OSCAR FLAP and SNAC frames and
