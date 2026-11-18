@@ -16,6 +16,7 @@ from . import dtp as dtp
 from . import edp as edp
 from . import esp as esp
 from . import gre as gre
+from . import gzip as gzip
 from . import hsrp as hsrp
 from . import http as http
 from . import icmp as icmp
@@ -103,6 +104,7 @@ __all__.extend(("ah", "esp"))
 __all__.extend(("crc32c", "ospf", "sctp"))
 __all__.extend(("gre", "pim"))
 __all__.append("arp")
+__all__.append("gzip")
 __all__.append("netflow")
 __all__.append("diameter")
 __all__.append("qq")

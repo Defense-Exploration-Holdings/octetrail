@@ -66,6 +66,7 @@ The [OSPF and SCTP modules](docs/ospf-sctp.md) parse and pack those packets the
 way dpkt 1.9.8 does, and IPv4 and IPv6 decode them.
 The [ARP module](docs/arp.md) parses and packs ARP the way dpkt 1.9.8 does, and
 Ethernet decodes it.
+The [gzip module](docs/gzip.md) parses and packs gzip member headers the way dpkt
 The [NetFlow module](docs/netflow.md) parses and packs NetFlow version 1, 5, 6
 and 7 exports the way dpkt 1.9.8 does.
 The [Diameter module](docs/diameter.md) parses and packs Diameter messages and
