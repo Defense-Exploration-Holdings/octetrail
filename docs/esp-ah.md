@@ -39,8 +39,8 @@ the Python recursion limit raises [`NestingError`](nesting.md), both an
 `UnpackError` and the `RecursionError` dpkt raises.
 
 One difference from dpkt 1.9.8 is declared. When an AH header carries IPv6
-whose next header is 44 after an extension header that is not a fragment
-header, dpkt raises `AttributeError` out of `AH`, and out of the IPv4 or IPv6
+whose fixed header has `nxt` 44 while its last extension header is not a
+fragment header, dpkt raises `AttributeError` out of `AH`, and out of the IPv4 or IPv6
 packet that carries the AH. OctetRail raises
 [`FragmentOffsetError`](ipv6.md#errors) for the inner packet, which is an
 `UnpackError`, so `AH` keeps it as bytes, as `IP` and `ICMP6` do.

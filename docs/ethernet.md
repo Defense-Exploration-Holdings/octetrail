@@ -40,8 +40,11 @@ assert isinstance(ethernet.Ethernet(wire).ip6, ip6.IP6)
   a `trailer`. The payload is an `LLC` object in `data` and `llc`.
 
 A decoded payload is also set as an attribute named after its class, such as
-`ip`, `ip6`, `ipx`, `llc` or `ethernet`. A payload class that raises
-`UnpackError` or `NeedData` leaves the bytes in `data`; other errors propagate.
+`ip`, `ip6`, `ipx`, `llc` or `ethernet`. On the type table and LLC/SNAP paths,
+a payload class that raises `UnpackError` or `NeedData` leaves the bytes in
+`data`, and other errors propagate. As in dpkt, the Novell raw 802.3 path and
+LLC without SNAP (DSAP 0x06, 0x10, 0xe0 and 0x42) catch nothing, so every
+payload error propagates there.
 Frames given as keywords decode a bytes `data` through the type table, but do
 not walk tag or label stacks.
 
@@ -78,7 +81,9 @@ tag.
 
 ## Errors
 
-A header shorter than it needs raises `NeedData`. An ISL tag followed by fewer
+A header shorter than it needs raises `NeedData` from the constructor. As in
+dpkt, calling `unpack()` directly on a short header raises `struct.error`
+instead, both for the Ethernet header and for the header after an ISL tag. An ISL tag followed by fewer
 than 14 bytes and a SNAP header shorter than five bytes raise `UnpackError`.
 An MPLS stack with no byte after it raises `ethernet.MPLSIndexError`, which is
 both an `UnpackError` and an `IndexError`, where dpkt raises `IndexError` with

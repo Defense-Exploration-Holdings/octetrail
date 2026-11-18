@@ -8,7 +8,7 @@ frames the way dpkt 1.9.8 does. Both are fixed headers on the
 ```python
 from octetrail import ip, pppoe
 
-frame = pppoe.PPPoE(session=7, len=22, data=pppoe.PPP(p=0x0021, data=ip.IP(p=59)))
+frame = pppoe.PPPoE(session=7, len=21, data=pppoe.PPP(p=0x0021, data=ip.IP(p=59)))
 parsed = pppoe.PPPoE(bytes(frame))
 assert parsed.session == 7 and isinstance(parsed.ppp.ip, ip.IP)
 ```
@@ -38,9 +38,9 @@ A header shorter than its fixed length raises `NeedData`, and so does a
 two-byte protocol field cut off by the buffer. Inside a PPPoE session or
 Ethernet frame such a payload stays bytes.
 
-One difference from dpkt 1.9.8 is declared. When PPP carries IPv6 whose next
-header is 44 after an extension header that is not a fragment header, dpkt
-raises `AttributeError` out of `PPP`, out of the PPPoE session and out of the
+One difference from dpkt 1.9.8 is declared. When PPP carries IPv6 whose fixed
+header has `nxt` 44 while its last extension header is not a fragment header,
+dpkt raises `AttributeError` out of `PPP`, out of the PPPoE session and out of the
 Ethernet frame that carries them. OctetRail raises
 [`FragmentOffsetError`](ipv6.md#errors) for the inner packet, which is an
 `UnpackError`, so `PPP` keeps it as bytes, as `IP` and `AH` do. The same holds

@@ -160,6 +160,16 @@ def cases():
                 ACK + b"\x00\x00\x00\x00",
             ),
         ),
+        # The same fields at their aligned offsets: TSFT needs no padding
+        # after the 8-byte header, and RxFlags needs one byte.
+        "rt_fields_aligned": (
+            "radiotap",
+            radiotap(
+                b"\x2f\x40\x00\x00",
+                (1).to_bytes(8, "little") + b"\x10\x02" + b"\x6c\x09\xa0\x00\xd8\x00\x00\x00",
+                ACK + b"\x00\x00\x00\x00",
+            ),
+        ),
         "rt_ext": (
             "radiotap",
             radiotap(b"\x02\x00\x00\x80\x00\x00\x00\x00", b"\x00", ACK),

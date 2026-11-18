@@ -60,6 +60,13 @@ class RadiotapTests(unittest.TestCase):
         self.assertEqual(names, ["TSFT", "Flags", "Rate", "Channel", "AntennaSignal", "RxFlags"])
         self.assertIsInstance(packet.data, ieee80211.IEEE80211)
 
+    def test_aligned_field_values(self):
+        packet = radiotap.Radiotap(CASES["rt_fields_aligned"])
+        names = [type(field).__name__ for field in packet.fields]
+        self.assertEqual(names, ["TSFT", "Flags", "Rate", "Channel", "AntennaSignal", "RxFlags"])
+        self.assertEqual((packet.tsft.usecs, packet.flags.val, packet.flags.fcs), (1, 0x10, 1))
+        self.assertIsInstance(packet.data, ieee80211.IEEE80211)
+
     def test_extended_present_words(self):
         packet = radiotap.Radiotap(CASES["rt_ext"])
         self.assertEqual(bytes(packet.present_flags), bytes.fromhex("0200008000000000"))

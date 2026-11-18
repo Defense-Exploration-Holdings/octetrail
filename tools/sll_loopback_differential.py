@@ -204,7 +204,12 @@ def provenance(module, version):
 
 # Observations where OctetRail differs from 1.9.8 on purpose.
 def _kept_as_bytes(path):
-    """dpkt raises AttributeError; OctetRail keeps the IPv6 bytes at the end of path."""
+    """dpkt raises AttributeError; OctetRail keeps the IPv6 bytes at the end of path.
+
+    The last layer must hold every byte of the inner IPv6 packet, so a lost or
+    cut payload fails, not only a payload that is not bytes.
+    """
+    kept = "data=" + repr(bytes.fromhex(FRAGMENT_AFTER_HOP)) + ")"
 
     def check(found):
         layer = found
@@ -213,7 +218,7 @@ def _kept_as_bytes(path):
                 return False
             if i < len(path) - 1:
                 layer = layer.get("data")
-        return "data" not in layer
+        return "data" not in layer and layer.get("repr", "").endswith(kept)
 
     return check
 

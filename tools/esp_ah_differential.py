@@ -208,7 +208,10 @@ def provenance(module, version):
 
 def _kept_as_bytes(cls, wire, depth):
     """The outcome OctetRail declares: `cls` parses (an AH repacks to `wire`),
-    and the layer `depth` levels down keeps the inner IPv6 packet as bytes."""
+    and the layer `depth` levels down keeps the inner IPv6 packet as bytes.
+    That layer must hold every byte of the inner packet, the part of the AH
+    header after its 16 bytes, so a lost or cut payload fails."""
+    kept = "data=" + repr(bytes.fromhex(FRAGMENT_AFTER_HOP)[16:]) + ")"
 
     def check(found):
         layer = found
@@ -219,6 +222,7 @@ def _kept_as_bytes(cls, wire, depth):
             and (cls != "AH" or found.get("bytes") == wire.hex())
             and layer.get("class") in ("AH", "IP6")
             and "data" not in layer
+            and layer.get("repr", "").endswith(kept)
         )
 
     return check

@@ -47,8 +47,8 @@ both an `UnpackError` and an `IndexError` with dpkt's message. dpkt raises
 
 The [fixture driver](../tools/dhcp_differential.py) parses 14 messages,
 including dpkt's test vector, and builds and repacks messages from keywords.
-OctetRail must equal dpkt 1.9.8 on all 26 observations except the declared
-missing length error:
+OctetRail must equal dpkt 1.9.8 on all 27 observations except the declared
+missing length error and its `UnpackError` base:
 
 ```sh
 python3 tools/dhcp_differential.py --oracle-196 ORACLE196/bin/python --oracle-198 ORACLE198/bin/python --python INSTALLED_WHEEL/bin/python

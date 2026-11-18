@@ -8,6 +8,7 @@ use pyo3::types::{PyBytes, PyDict};
 pyo3::create_exception!(_native, DnsFormatError, PyException);
 pyo3::create_exception!(_native, DnsLabelError, PyException);
 pyo3::create_exception!(_native, DnsPointerError, PyException);
+pyo3::create_exception!(_native, DnsShortPointerError, PyException);
 
 fn error(failure: dns::Error) -> PyErr {
     match failure {
@@ -56,7 +57,13 @@ fn _dns_unpack_name<'py>(
     bytes: usize,
 ) -> PyResult<(Bound<'py, PyBytes>, usize, usize, usize)> {
     let mut budget = dns::Budget { steps, bytes };
-    let (raw, next) = dns::unpack_name_raw(buf, offset, &mut budget).map_err(error)?;
+    // A name that ends one byte into a compression pointer is the only
+    // short field here; dpkt raises struct.error for it.
+    let (raw, next) =
+        dns::unpack_name_raw(buf, offset, &mut budget).map_err(|failure| match failure {
+            dns::Error::ShortField => DnsShortPointerError::new_err(failure.to_string()),
+            other => error(other),
+        })?;
     Ok((PyBytes::new(py, &raw), next, budget.steps, budget.bytes))
 }
 
@@ -73,5 +80,9 @@ pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add("DnsFormatError", module.py().get_type::<DnsFormatError>())?;
     module.add("DnsLabelError", module.py().get_type::<DnsLabelError>())?;
     module.add("DnsPointerError", module.py().get_type::<DnsPointerError>())?;
+    module.add(
+        "DnsShortPointerError",
+        module.py().get_type::<DnsShortPointerError>(),
+    )?;
     Ok(())
 }

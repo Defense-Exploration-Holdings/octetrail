@@ -55,7 +55,11 @@ class SCTP(Packet):
             rows, stopped = _native._sctp_chunks(raw, self.__hdr_len__)
         except _native.SctpShortChunkError as error:
             raise NeedData("got %d, %d needed at least" % (error.args[0], 4)) from None
-        self.chunks = [_chunk(buf, row) for row in rows]
+        # Chunk data is sliced on first use. A bytearray is copied first, so a
+        # later change to the caller's buffer does not reach the chunks, as in
+        # dpkt, which copies each chunk when parsing.
+        source = bytearray(raw) if isinstance(buf, bytearray) else buf
+        self.chunks = [_chunk(source, row) for row in rows]
         self.data = b"" if stopped else buf[len(buf) :]
 
     def __len__(self):
@@ -108,7 +112,9 @@ class Chunk(Packet):
         return self.data
 
     def _materialize(self):
-        lazy = self.__dict__.pop("_lazy", None)
+        # data is set before _lazy is dropped, so another thread reading data
+        # in between still finds one of them.
+        lazy = self.__dict__.get("_lazy")
         if lazy is None:
             return
         try:
@@ -116,6 +122,7 @@ class Chunk(Packet):
         except AttributeError:
             buf, start, end = lazy
             self.data = buf[start:end]
+        self.__dict__.pop("_lazy", None)
 
     def __repr__(self):
         self._materialize()

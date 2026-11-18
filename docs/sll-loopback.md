@@ -35,9 +35,9 @@ so a short payload raises `NeedData`.
 
 A header shorter than its fixed length raises `NeedData`.
 
-One difference from dpkt 1.9.8 is declared. When the payload is IPv6 whose next
-header is 44 after an extension header that is not a fragment header, dpkt
-raises `AttributeError` out of `SLL`, `SLL2` and `Loopback`. OctetRail raises
+One difference from dpkt 1.9.8 is declared. When the payload is IPv6 whose fixed
+header has `nxt` 44 while its last extension header is not a fragment header,
+dpkt raises `AttributeError` out of `SLL`, `SLL2` and `Loopback`. OctetRail raises
 [`FragmentOffsetError`](ipv6.md#errors) for that packet, which is an
 `UnpackError`. `SLL` and `SLL2` keep it as bytes, as `IP` and `Ethernet` do.
 So do IPv4 carrying such IPv6 under any of the three headers, and Ethernet

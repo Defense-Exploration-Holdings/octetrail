@@ -50,6 +50,14 @@ class TextDecodeError(UnpackError, UnicodeDecodeError):
     """
 
 
+class ShortPointerError(UnpackError, struct.error):
+    """A name ends one byte into a compression pointer.
+
+    dpkt raises struct.error here, with the same message. This class is also an
+    UnpackError, so code that catches either one handles it.
+    """
+
+
 # While DNS.unpack runs: the buffer it was given, that buffer as bytes and the
 # work budget left, so that names are read without copying the message again.
 _PARSE = contextvars.ContextVar("octetrail_dns_parse", default=None)
@@ -94,6 +102,8 @@ def unpack_name(buf, off):
         raise ParseLimitError(str(error)) from None
     except _native.TruncatedError:
         raise NeedData() from None
+    except _native.DnsShortPointerError:
+        raise ShortPointerError("unpack requires a buffer of 2 bytes") from None
     except _native.DnsFormatError as error:
         raise UnpackError(str(error)) from None
     return _decode(name), off

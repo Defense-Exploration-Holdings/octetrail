@@ -41,6 +41,19 @@ class NetflowTests(unittest.TestCase):
         self.assertEqual(len(raw), 24 + 96)
         self.assertEqual(netflow.Netflow5(raw).data[1].dst_port, 80)
 
+    def test_record_subclass_length_is_used(self):
+        class Record(netflow.Netflow5.NetflowRecord):
+            def __len__(self):
+                return 96
+
+        class Export(netflow.Netflow5):
+            NetflowRecord = Record
+
+        raw = F.header(5, 0, bytes(8)) + F.record(48, 1) * 2
+        # As in dpkt, each record consumes the length its class reports.
+        self.assertEqual(len(Export(raw).data), 1)
+        self.assertEqual(len(netflow.Netflow5(raw).data), 2)
+
     def test_many_records_parse_in_linear_time(self):
         count = 40000
         raw = F.header(5, 0, bytes(8)) + F.record(48, 1) * count

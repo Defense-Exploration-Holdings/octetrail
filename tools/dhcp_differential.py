@@ -130,6 +130,14 @@ def constructed(package):
                 if c.__module__ == "builtins"
             )
         ),
+        # error_classes compares builtin bases only, so the UnpackError base
+        # OctetRail adds is checked here, as a declared difference.
+        "missing_length_is_unpack_error": attempt(
+            lambda: any(
+                c.__name__ == "UnpackError"
+                for c in type(_raised(lambda: dhcp.DHCP(HEADER + b"\x35"))).__mro__
+            )
+        ),
         "constants": attempt(
             lambda: sorted(
                 (k, getattr(dhcp, k))
@@ -183,6 +191,7 @@ DECLARED = {
         "error": "MissingLengthError",
         "message": "bytearray index out of range",
     },
+    "constructed.missing_length_is_unpack_error": True,
 }
 
 

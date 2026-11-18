@@ -422,7 +422,7 @@ class WorkflowTests(unittest.TestCase):
             {"artifact-ids": "${{ needs.build.outputs.artifact-id }}", "path": "release"},
         )
 
-    def test_macos_arm64_fallback_repeats_the_wheel_steps_on_macos_14(self):
+    def test_macos_arm64_fallback_repeats_the_wheel_steps_on_macos_26(self):
         jobs = self.workflow["jobs"]
         primary, fallback = jobs["wheels"], jobs["wheels-macos-arm64-fallback"]
         self.assertEqual(fallback["steps"], primary["steps"])
@@ -430,7 +430,7 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(fallback[key], primary[key])
         [row] = fallback["strategy"]["matrix"]["include"]
         [arm] = [r for r in primary["strategy"]["matrix"]["include"] if r["name"] == "macos-arm64"]
-        self.assertEqual({**arm, "os": "macos-14", "compatibility": "", "zig": "false"}, row)
+        self.assertEqual({**arm, "os": "macos-26", "compatibility": "", "zig": "false"}, row)
         self.assertNotIn("zig", arm)
         self.assertNotIn("compatibility", arm)
         self.assertEqual(arm["os"], "macos-15")
@@ -441,7 +441,7 @@ class WorkflowTests(unittest.TestCase):
         )
         probe = jobs["macos-arm64-missing"]
         self.assertEqual(probe["needs"], "wheels")
-        self.assertEqual(probe["if"], "${{ !cancelled() && needs.wheels.result == 'failure' }}")
+        self.assertEqual(probe["if"], "${{ !cancelled() }}")
         self.assertEqual(probe["permissions"], {"actions": "read", "contents": "read"})
         step = probe["steps"][-1]
         self.assertEqual(step["run"], '"$BUILD_PY" -B -I tools/release_ci.py fallback')
@@ -471,6 +471,7 @@ class WorkflowTests(unittest.TestCase):
         ran = {"name": "Set up job", "status": "completed", "conclusion": "success"}
         failed = {"name": "Test the wheel", "status": "completed", "conclusion": "failure"}
         self.assertTrue(R.runner_not_acquired([other, job()]))
+        self.assertTrue(R.runner_not_acquired([other, job(conclusion="cancelled")]))
         self.assertTrue(R.runner_not_acquired([job(runner_name=None, steps=None)]))
         self.assertTrue(
             R.runner_not_acquired([job(steps=[{"name": "Set up job", "status": "queued"}])])
@@ -480,7 +481,8 @@ class WorkflowTests(unittest.TestCase):
             job(steps=[ran, failed]),
             job(runner_name="GitHub Actions 12"),
             job(conclusion="success"),
-            job(conclusion="cancelled"),
+            job(conclusion="skipped"),
+            job(conclusion="cancelled", runner_name="GitHub Actions 12", steps=[ran]),
         ):
             with self.subTest(case=case):
                 self.assertFalse(R.runner_not_acquired([other, case]))

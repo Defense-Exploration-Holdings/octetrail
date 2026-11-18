@@ -592,6 +592,12 @@ DECLARED = {
     "bad_utf8_name": {"error": "TextDecodeError", "message": _DECODE},
     "bad_utf8_text": {"error": "TextDecodeError", "message": _DECODE},
 }
+# What dpkt 1.9.8 must still do for each declared case, so a declared
+# difference stays a measured one.
+DECLARED_REFERENCE = {
+    "bad_utf8_name": {"error": "UnicodeDecodeError", "message": _DECODE},
+    "bad_utf8_text": {"error": "UnicodeDecodeError", "message": _DECODE},
+}
 
 
 def main():
@@ -634,6 +640,10 @@ def main():
         C.require(len(report["constructors"]) == 12, "DNS constructor coverage")
         count += 1
     reference = observed[1][1]
+    C.require(
+        all(reference.get(k) == v for k, v in DECLARED_REFERENCE.items()),
+        "a declared DNS difference no longer matches dpkt 1.9.8",
+    )
     for name, found in observed[2:]:
         wrong = sorted(k for k in reference if found.get(k) != DECLARED.get(k, reference[k]))
         C.require(not wrong, "DNS observation mismatch " + name + ": " + ", ".join(wrong))

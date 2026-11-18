@@ -371,13 +371,17 @@ FALLBACK_JOB = "Wheel macos-arm64"
 
 
 def runner_not_acquired(jobs, name=FALLBACK_JOB):
-    """Whether the named job failed without a runner, rather than in a step."""
+    """Whether the named job ended without a runner, rather than in a step.
+
+    GitHub reports an unacquired job as failed or as cancelled. A cancelled
+    run never reaches this check, because the probe job requires !cancelled().
+    """
     found = [job for job in jobs if job.get("name") == name]
     if len(found) != 1:
         return False
     [job] = found
     return (
-        job.get("conclusion") == "failure"
+        job.get("conclusion") in ("failure", "cancelled")
         and not job.get("runner_name")
         and not any(step.get("status") == "completed" for step in job.get("steps") or [])
     )

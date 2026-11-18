@@ -54,7 +54,10 @@ including chunked bodies, the way dpkt 1.9.8 does. Three header errors and
 the overflow of a Content-Length or chunk size, which dpkt raises as builtin
 errors, are declared. No automatic application dispatch is added.
 The [SIP module](sip.md) parses and packs SIP requests and responses the way
-dpkt 1.9.8 does, with no declared differences.
+dpkt 1.9.8 does. It reads bodies with the HTTP parser, so it shares the HTTP
+module's declared differences: a bad Content-Length raises
+`http.HeaderValueError`, which is also an `UnpackError` and dpkt's
+`ValueError`.
 The [IPv4 module](ipv4.md) parses and packs IPv4 datagrams, their options and
 checksums, and the shared protocol table the way dpkt 1.9.8 does, except one
 declared difference for an IPv6 payload.

@@ -52,9 +52,9 @@ When the present words run past the end of the buffer, OctetRail raises
 
 ## Verification
 
-The [fixture driver](../tools/ieee80211_radiotap_differential.py) parses 74
+The [fixture driver](../tools/ieee80211_radiotap_differential.py) parses 75
 frames, including dpkt's own test vectors with and without an FCS, and builds
-frames from keywords. OctetRail must equal dpkt 1.9.8 on all 90 observations
+frames from keywords. OctetRail must equal dpkt 1.9.8 on all 91 observations
 except the two declared present word errors:
 
 ```sh

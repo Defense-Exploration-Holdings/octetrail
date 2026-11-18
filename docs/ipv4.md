@@ -46,9 +46,9 @@ TTL 64, zero addresses and a `len` of 20 plus its options and payload, unless
 The slices keep the type of the buffer, so a `bytearray` gives `bytearray`
 options and payload.
 
-One difference from dpkt 1.9.8 is declared. When an IPv6 payload has next
-header 44 after an extension header that is not a fragment header, dpkt raises
-`AttributeError` out of `IP`. OctetRail raises
+One difference from dpkt 1.9.8 is declared. When an IPv6 payload has `nxt` 44
+in its fixed header while its last extension header is not a fragment header,
+dpkt raises `AttributeError` out of `IP`. OctetRail raises
 [`FragmentOffsetError`](ipv6.md#errors) for the payload, which is an
 `UnpackError`, so `IP` keeps it as bytes.
 

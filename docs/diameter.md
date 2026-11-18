@@ -19,11 +19,13 @@ assert parsed.avps[0].data == b"h002"
 `Diameter` has `v`, `len`, `flags`, `cmd`, `app_id`, `hop_id` and `end_id`,
 with `request_flag`, `proxiable_flag`, `error_flag` and `retransmit_flag` as
 bit properties of `flags`. `len` and `cmd` are 24-bit numbers after parsing.
-`avps` and `data` are the same list of `AVP` objects.
+After parsing, `avps` and `data` are the same list of `AVP` objects. Packing
+reads `data`, so change that list in place or assign a new list to `data`.
+Assigning a new list to `avps` alone does not change the packed bytes.
 
 `AVP` has `code`, `flags` and `len`, with `vendor_flag`, `mandatory_flag` and
-`protected_flag`. When the vendor flag is set, `vendor` holds the 4 bytes after
-the header.
+`protected_flag`. When the vendor flag is set, `vendor` is the unsigned 32-bit
+integer in the 4 bytes after the header, in network byte order.
 
 ## Parsing
 
@@ -41,7 +43,7 @@ linear time.
 
 ## Packing
 
-`bytes()` packs the header and each AVP in `avps`. `len` is packed as it is.
+`bytes()` packs the header and each AVP in `data`. `len` is packed as it is.
 It is not computed. `len()` counts the header and the AVPs.
 
 ## Errors

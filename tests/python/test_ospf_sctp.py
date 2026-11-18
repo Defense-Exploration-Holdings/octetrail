@@ -4,6 +4,7 @@ import importlib.util
 import subprocess
 import sys
 import time
+import tracemalloc
 import unittest
 from pathlib import Path
 
@@ -44,6 +45,16 @@ class OspfSctpTests(unittest.TestCase):
         self.assertEqual((malformed.chunks[1].len, malformed.chunks[1].data), (0, b"\0\0"))
         self.assertEqual(malformed.data, b"")
 
+    def test_bytearray_chunks_keep_their_bytes(self):
+        raw = bytearray(CASES["sctp_dpkt_init"])
+        expected = bytes(raw[16:72])
+        packet = sctp.SCTP(raw)
+        raw[16:72] = bytes(56)
+        # dpkt copies each chunk while parsing, so a later change to the
+        # caller's buffer does not show in the chunk.
+        chunk = packet.chunks[0]
+        self.assertEqual((type(chunk.data), bytes(chunk.data)), (bytearray, expected))
+
     def test_short_chunk_is_need_data_and_stays_bytes_inside_ip(self):
         with self.assertRaises(NeedData) as result:
             sctp.SCTP(CASES["sctp_short_chunk"])
@@ -55,9 +66,18 @@ class OspfSctpTests(unittest.TestCase):
         # Each DATA chunk of length two steps four bytes and holds the rest
         # of the packet but two bytes.
         raw = F.sctp(b"\x00\x02" * 60000 + bytes(4))
-        start = time.perf_counter()
-        packet = sctp.SCTP(raw)
-        self.assertLess(time.perf_counter() - start, 5)
+        tracemalloc.start()
+        try:
+            start = time.perf_counter()
+            packet = sctp.SCTP(raw)
+            elapsed = time.perf_counter() - start
+            _, peak = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+        # Copying each chunk's data while parsing would allocate about 3.6 GB;
+        # slicing it on first use stays far below this bound.
+        self.assertLess(peak, 128 * 1024 * 1024)
+        self.assertLess(elapsed, 30)
         self.assertEqual(len(packet.chunks), 30001)
         self.assertEqual(packet.chunks[0].data, raw[16:-2])
         self.assertEqual(len(packet.chunks[-2].data), 2)

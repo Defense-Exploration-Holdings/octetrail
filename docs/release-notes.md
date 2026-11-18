@@ -1,5 +1,33 @@
 # Release notes
 
+## 0.7.1
+
+0.7.1 also carries the 0.7.0 changes below. 0.7.0 was not published, because
+the release workflow did not acquire a macOS arm64 runner and its fallback
+build did not start.
+
+- SCTP chunks parsed from a `bytearray` keep their bytes when the caller
+  changes the buffer afterwards, as in dpkt. Lazy SCTP chunk data and AH
+  fields are also safe to read from several threads.
+- `dns.unpack_name` raises `dns.ShortPointerError`, both an `UnpackError` and
+  a `struct.error`, for a name that ends one byte into a compression pointer.
+  dpkt raises `struct.error` with the same message.
+- NetFlow record subclasses that replace `__len__` or `unpack` are read one
+  record at a time, as in dpkt.
+- Documentation fixes for Ethernet, DNS, SIP, PPP, SLL, IPv4, AH, Diameter,
+  SCCP and NetFlow.
+- Stricter differential checks: declared differences in the SLL, PPP and AH
+  drivers must keep the whole inner IPv6 packet, the DNS driver checks that
+  dpkt still raises in each declared case, the DHCP driver checks the
+  `UnpackError` base of `MissingLengthError`, and the OSPF and SCTP summary no
+  longer lists cases that dpkt 1.9.6 did not run.
+- New radiotap fixture with aligned fields, and tests that check SCTP parsing
+  memory and the AH copy taken when parsing a `bytearray`.
+- The macOS arm64 fallback wheel builds on the macOS 26 runner, since GitHub
+  retired macOS 14. The probe for an unacquired macOS 15 arm64 runner now runs
+  whatever the matrix result is, and also counts a job reported as cancelled
+  with no runner and no steps.
+
 ## 0.7.0
 
 Packets whose headers nest deeper than the Python recursion limit now raise

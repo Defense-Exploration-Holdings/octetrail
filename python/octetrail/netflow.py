@@ -44,7 +44,13 @@ class NetflowBase(Packet):
         Packet.unpack(self, buf)
         buf = self.data
         l_ = []
-        size = self.NetflowRecord.__hdr_len__ if buf else 0
+        size = 0
+        if buf:
+            # The fast split needs records whose length is their header size.
+            # A record class that changes __len__ or unpack is walked as in dpkt.
+            record, base = self.NetflowRecord, NetflowBase.NetflowRecordBase
+            if record.__len__ is base.__len__ and record.unpack is base.unpack:
+                size = record.__hdr_len__
         if size:
             # The records are split in Rust and each gets only its own bytes.
             count, tail = _native._netflow_records(len(buf), size)

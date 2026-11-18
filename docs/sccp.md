@@ -17,11 +17,15 @@ assert message.data == b"next"
 ## Fields
 
 `SCCP` has `len`, `rsvd` and `msgid`, little-endian, and `msg`. Parsing puts
-the `len - 4` bytes after the header in `msg` and the rest in `data`. A known
-`msgid` decodes `msg` into an attribute named after the message class in lower
-case, such as `keypadbutton` or `startmediatransmission`. Unknown ids, and
-messages too short for their class, stay as bytes in `msg`. As in dpkt, a
-`SelectStartKeys` class exists but `SELECT_SOFTKEYS` messages are not decoded.
+the `len - 4` bytes after the header in `msg` and the rest in `data`. As in
+dpkt, a `len` below 4 is not rejected: the slice counts from the end instead,
+so `len` 0 puts all but the last four bytes in `msg`. Check `len >= 4` before
+relying on the split in a stream. A `msgid` that dpkt decodes turns `msg` into
+an attribute named after the message class in lower case, such as
+`keypadbutton` or `startmediatransmission`. Those ids are the keys of
+`SCCP._msgsw`. Other ids, and messages too short for their class, stay as bytes
+in `msg`. As in dpkt, `SelectStartKeys` and `SetSpeakerMode` classes exist but
+`SELECT_SOFTKEYS` and `SET_SPEAKER_MODE` messages are not decoded.
 
 ## Packing
 

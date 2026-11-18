@@ -101,7 +101,7 @@ link-layer headers of Linux cooked and null/loopback captures the way dpkt
 The [SSL and TLS module](docs/tls.md) parses and packs records, handshakes,
 hellos and certificate lists the way dpkt 1.9.8 does, with dpkt's cipher suite table.
 
-See the [0.7.0 release notes](docs/release-notes.md) for the changes
+See the [0.7.1 release notes](docs/release-notes.md) for the changes
 and their compatibility limits.
 
 ## Use the classic-pcap reader

@@ -63,7 +63,7 @@ in the [README](../README.md).
 
 ## Distribution decision remains separate
 
-The default distribution and import namespace remain `octetrail==0.7.0`. It
+The default distribution and import namespace remain `octetrail==0.7.1`. It
 installs no `dpkt` package, startup hook, namespace alias, dependency or
 Provides-Dist declaration. It cannot satisfy `dpkt==1.9.6`, `dpkt==1.9.8`, or any
 other dpkt requirement. Both packages can coexist, with normal `import dpkt`

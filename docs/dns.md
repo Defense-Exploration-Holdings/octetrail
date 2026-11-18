@@ -89,6 +89,9 @@ The error classes follow dpkt:
   - a name is too long;
   - a label uses a reserved length form;
   - the record type is unsupported.
+- `ShortPointerError`: `unpack_name` reached a name that ends one byte into a
+  compression pointer. dpkt raises `struct.error`; this class subclasses both
+  `UnpackError` and `struct.error` and keeps dpkt's message.
 - `TextDecodeError`: a name or TXT or HINFO string is not UTF-8. dpkt raises
   `UnicodeDecodeError`; this class subclasses both `UnpackError` and
   `UnicodeDecodeError` and keeps dpkt's message.

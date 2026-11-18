@@ -353,8 +353,12 @@ def main():
                 "cases": len(cases()),
                 "observations": len(reference),
                 "providers": len(providers),
+                # Cases 1.9.6 did not run are listed under not_run_on_196.
                 "dpkt_196_differs_on": sorted(
-                    k for k in reference if reports[0].get(k) != reference[k]
+                    k
+                    for k in reference
+                    if reports[0].get(k) != reference[k]
+                    and not (isinstance(reports[0].get(k), dict) and "skipped" in reports[0][k])
                 ),
                 "not_run_on_196": sorted(ZERO_LENGTH),
                 "declared_differences": sorted(DECLARED),

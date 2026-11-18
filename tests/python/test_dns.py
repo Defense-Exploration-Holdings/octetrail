@@ -165,6 +165,13 @@ class DnsTests(unittest.TestCase):
         self.assertEqual(str(caught.exception), "")
         with self.assertRaises(octetrail.UnpackError):
             dns.unpack_name(b"\xc0\x00", 0)
+        # A name that ends one byte into a pointer: dpkt raises struct.error.
+        for cut in (b"\xc0", b"\x03abc\xc0"):
+            with self.assertRaises(dns.ShortPointerError) as caught:
+                dns.unpack_name(cut, 0)
+            self.assertIsInstance(caught.exception, struct.error)
+            self.assertIsInstance(caught.exception, octetrail.UnpackError)
+            self.assertEqual(str(caught.exception), "unpack requires a buffer of 2 bytes")
         self.assertEqual((dns.DNS_RCODE_YXDOMAIN, dns.DNS_RCODE_NOTZONE), (6, 10))
 
     def test_header_counts_flags_and_independent_defaults(self):

@@ -260,7 +260,9 @@ class IP6AHHeader(IP6ExtensionHeader):
         return getattr(self, name)
 
     def _materialize(self):
-        lazy = self.__dict__.pop("_lazy", None)
+        # Both fields are set before _lazy is dropped, so another thread
+        # reading them in between still finds one or the other.
+        lazy = self.__dict__.get("_lazy")
         if lazy is None:
             return
         raw, (ds, de), (a_start, a_end) = lazy
@@ -270,6 +272,7 @@ class IP6AHHeader(IP6ExtensionHeader):
             self.data = raw[ds:de]
         if "auth_data" not in self.__dict__:
             self.auth_data = raw[a_start:a_end]
+        self.__dict__.pop("_lazy", None)
 
     def __repr__(self):
         self._materialize()

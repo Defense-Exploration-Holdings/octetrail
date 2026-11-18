@@ -10,7 +10,7 @@ not supported, as in dpkt.
 from octetrail import netflow
 
 record = netflow.Netflow5.NetflowRecord(src_addr=0x0A000001, dst_port=443)
-export = netflow.Netflow5(sys_uptime=10, data=[record])
+export = netflow.Netflow5(version=5, sys_uptime=10, data=[record])
 parsed = netflow.Netflow5(bytes(export))
 assert parsed.count == 1
 assert parsed.data[0].dst_port == 443
@@ -26,7 +26,8 @@ dpkt's fields for its version and no payload.
 ## Parsing
 
 The bytes after the header are split into records of the record class's fixed
-size. `count` is not checked against the number of records, and `version` is
+size. A record subclass that replaces `__len__` or `unpack` is read one record
+at a time, each from the rest of the buffer, the way dpkt does. `count` is not checked against the number of records, and `version` is
 not checked against the class, as in dpkt. Each record is built from its own
 bytes, so a long export parses in linear time.
 
@@ -34,7 +35,8 @@ bytes, so a long export parses in linear time.
 
 `bytes()` sets `count` to the number of records, then packs the header and
 each record. `len()` is the header plus the size of the first record times
-`count`, as in dpkt.
+`count`, as in dpkt, so `len()` of an export with no records raises
+`IndexError`.
 
 ## Errors
 

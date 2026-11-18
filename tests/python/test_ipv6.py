@@ -232,10 +232,13 @@ class IPv6Tests(unittest.TestCase):
         self.assertIs(type(routing.addresses[0]), bytearray)
         # dpkt sets a fragment header's data to b"" whatever the buffer.
         self.assertIs(type(frag.data), bytes)
-        expected = bytes(auth.auth_data)
+        reference = ip6.IP6(bytes(buf)).all_extension_headers[3]
+        expected = (reference.auth_data, reference.data)
         buf[:] = bytes(len(buf))
-        # The AH fields are sliced on first use, from a copy taken when parsing.
-        self.assertEqual((type(auth.auth_data), auth.auth_data), (bytearray, expected))
+        # The AH fields are sliced on first use, from a copy taken when parsing,
+        # so the change above must not show in either of them.
+        self.assertEqual((type(auth.auth_data), auth.auth_data), (bytearray, expected[0]))
+        self.assertEqual((type(auth.data), auth.data), (bytearray, expected[1]))
         self.assertIs(type(dst.data), bytearray)
         self.assertIs(
             type(ip6.IP6RoutingHeader(bytearray(F.routing(6, 2))).addresses[1]), bytearray
