@@ -19,6 +19,7 @@ from . import gre as gre
 from . import gzip as gzip
 from . import hsrp as hsrp
 from . import http as http
+from . import http2 as http2
 from . import icmp as icmp
 from . import icmp6 as icmp6
 from . import ieee80211 as ieee80211
@@ -70,7 +71,7 @@ from .packet import in_cksum as in_cksum
 from .packet import in_cksum_add as in_cksum_add
 from .packet import in_cksum_done as in_cksum_done
 
-__version__ = "0.5.1"
+__version__ = "0.6.0"
 __all__ = [
     "Error",
     "NeedData",
@@ -104,6 +105,7 @@ __all__.extend(("ah", "esp"))
 __all__.extend(("crc32c", "ospf", "sctp"))
 __all__.extend(("gre", "pim"))
 __all__.append("arp")
+__all__.append("http2")
 __all__.append("gzip")
 __all__.append("netflow")
 __all__.append("diameter")

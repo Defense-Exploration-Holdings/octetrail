@@ -18,6 +18,7 @@ pub mod dtp;
 pub mod ethernet;
 pub mod gre;
 pub mod http;
+pub mod http2;
 pub mod ieee80211;
 pub mod ipv4;
 pub mod ipv6;

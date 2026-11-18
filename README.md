@@ -66,12 +66,16 @@ The [OSPF and SCTP modules](docs/ospf-sctp.md) parse and pack those packets the
 way dpkt 1.9.8 does, and IPv4 and IPv6 decode them.
 The [ARP module](docs/arp.md) parses and packs ARP the way dpkt 1.9.8 does, and
 Ethernet decodes it.
+The [HTTP/2 module](docs/http2.md) parses and packs HTTP/2 frames the way dpkt
+1.9.8 does.
 The [gzip module](docs/gzip.md) parses and packs gzip member headers the way dpkt
+1.9.8 does.
 The [NetFlow module](docs/netflow.md) parses and packs NetFlow version 1, 5, 6
 and 7 exports the way dpkt 1.9.8 does.
 The [Diameter module](docs/diameter.md) parses and packs Diameter messages and
 AVPs the way dpkt 1.9.8 does.
 The [QQ module](docs/qq.md) parses and packs QQ messenger headers the way dpkt
+1.9.8 does.
 The [SCCP module](docs/sccp.md) parses and packs Cisco Skinny messages the way
 dpkt 1.9.8 does.
 The [AIM module](docs/aim.md) parses and packs OSCAR FLAP and SNAC frames and
@@ -88,7 +92,7 @@ link-layer headers of Linux cooked and null/loopback captures the way dpkt
 The [SSL and TLS module](docs/tls.md) parses and packs records, handshakes,
 hellos and certificate lists the way dpkt 1.9.8 does, with dpkt's cipher suite table.
 
-See the [0.5.1 release notes](docs/release-notes.md) for the changes
+See the [0.6.0 release notes](docs/release-notes.md) for the changes
 and their compatibility limits.
 
 ## Use the classic-pcap reader
@@ -180,6 +184,14 @@ reference](docs/capture-api-ledger.md) lists supported behavior and exclusions.
 The reader and writer guides describe streaming, timestamp, ownership and
 resource-limit semantics. No performance, whole-library parity or package
 resolver substitution is claimed.
+
+## Sponsors
+
+<a href="https://appliku.com/"><img src="https://raw.githubusercontent.com/Defense-Exploration-Holdings/fuzzyhash-ng/main/assets/sponsors/appliku.png" alt="Appliku" height="64"></a>
+&nbsp;&nbsp;
+<a href="https://github.com/speedpy/speedpy"><img src="https://raw.githubusercontent.com/Defense-Exploration-Holdings/fuzzyhash-ng/main/assets/sponsors/speedpy.png" alt="SpeedPy" height="64"></a>
+
+[Appliku](https://appliku.com/) and [SpeedPy](https://github.com/speedpy/speedpy) support this project.
 
 ## License
 

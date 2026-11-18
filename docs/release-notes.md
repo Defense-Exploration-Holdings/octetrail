@@ -1,11 +1,11 @@
 # Release notes
 
-## Unreleased
+## 0.6.0
 
-Gzip now parses and packs the way dpkt 1.9.8 does: the new `octetrail.gzip`
-module has `Gzip`, `GzipExtra` and dpkt's constants. A file name that is not
-UTF-8 raises `gzip.FilenameDecodeError`, which is both an `UnpackError` and a
-`UnicodeDecodeError`.
+HTTP/2 now parses and packs the way dpkt 1.9.8 does: the new `octetrail.http2`
+module has dpkt's frame classes, `FrameFactory` and `frame_multi_factory`, with
+frame boundaries found in Rust in linear time. `HTTP2Exception` is also an
+`UnpackError`.
 
 AH and ESP now parse and pack the way dpkt 1.9.8 does:
 
@@ -113,6 +113,11 @@ constants.
 
 SIP now parses and packs the way dpkt 1.9.8 does: the new `octetrail.sip`
 module has `Request` and `Response` on the HTTP classes.
+
+Gzip now parses and packs the way dpkt 1.9.8 does: the new `octetrail.gzip`
+module has `Gzip`, `GzipExtra` and dpkt's constants. A file name that is not
+UTF-8 raises `gzip.FilenameDecodeError`, which is both an `UnpackError` and a
+`UnicodeDecodeError`.
 
 NetFlow now parses and packs the way dpkt 1.9.8 does: the new
 `octetrail.netflow` module has `Netflow1`, `Netflow5`, `Netflow6` and

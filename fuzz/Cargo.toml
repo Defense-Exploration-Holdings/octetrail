@@ -64,6 +64,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "http2"
+path = "fuzz_targets/http2.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "netflow"
 path = "fuzz_targets/netflow.rs"
 test = false

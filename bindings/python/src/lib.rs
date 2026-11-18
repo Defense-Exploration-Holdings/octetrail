@@ -456,6 +456,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     cdp::register(module)?;
     sctp::register(module)?;
     vrrp::register(module)?;
+    http2::register(module)?;
     netflow::register(module)?;
     diameter::register(module)?;
     ieee80211::register(module)?;
@@ -479,6 +480,7 @@ mod cdp;
 mod dhcp;
 mod diameter;
 mod gre;
+mod http2;
 mod ieee80211;
 mod netflow;
 mod radius_stun;

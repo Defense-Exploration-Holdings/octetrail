@@ -93,6 +93,8 @@ The [CDP, DTP and EDP modules](cdp-dtp-edp.md) parse and pack those packets
 the way dpkt 1.9.8 does, with no declared differences.
 The [PPP and PPPoE modules](ppp.md) parse and pack those frames the way
 dpkt 1.9.8 does. A PPP frame that carries an IPv6 packet failing with
+`FragmentOffsetError` keeps that packet as bytes, where dpkt raises
+`AttributeError`.
 The [AH and ESP modules](esp-ah.md) parse and pack those headers the way
 dpkt 1.9.8 does. An AH header that carries an IPv6 packet failing with
 `FragmentOffsetError` keeps that packet as bytes, where dpkt raises
@@ -101,6 +103,8 @@ The [OSPF and SCTP modules](ospf-sctp.md) parse and pack those packets the way
 dpkt 1.9.8 does, with no declared differences.
 The [ARP module](arp.md) parses and packs ARP the way dpkt 1.9.8 does, with no
 declared differences.
+The [HTTP/2 module](http2.md) parses and packs frames the way dpkt 1.9.8 does.
+Its `HTTP2Exception` is also an `UnpackError`.
 The [gzip module](gzip.md) parses and packs gzip headers the way dpkt 1.9.8
 does. A file name that is not UTF-8 raises an error that is both an
 `UnpackError` and dpkt's `UnicodeDecodeError`.
