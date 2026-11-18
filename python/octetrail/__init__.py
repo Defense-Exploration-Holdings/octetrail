@@ -18,6 +18,7 @@ from . import hsrp as hsrp
 from . import http as http
 from . import icmp as icmp
 from . import icmp6 as icmp6
+from . import ieee80211 as ieee80211
 from . import igmp as igmp
 from . import ip6 as ip6
 from . import ipip as ipip
@@ -32,6 +33,7 @@ from . import pim as pim
 from . import pmap as pmap
 from . import ppp as ppp
 from . import pppoe as pppoe
+from . import radiotap as radiotap
 from . import radius as radius
 from . import raw as raw
 from . import rfb as rfb
@@ -96,6 +98,7 @@ __all__.extend(("ah", "esp"))
 __all__.extend(("crc32c", "ospf", "sctp"))
 __all__.extend(("gre", "pim"))
 __all__.append("arp")
+__all__.extend(("ieee80211", "radiotap"))
 __all__.append("rpc")
 __all__.append("dhcp")
 __all__.append("sip")

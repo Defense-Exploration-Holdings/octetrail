@@ -66,6 +66,8 @@ The [OSPF and SCTP modules](docs/ospf-sctp.md) parse and pack those packets the
 way dpkt 1.9.8 does, and IPv4 and IPv6 decode them.
 The [ARP module](docs/arp.md) parses and packs ARP the way dpkt 1.9.8 does, and
 Ethernet decodes it.
+The [IEEE 802.11 and radiotap modules](docs/ieee80211-radiotap.md) parse and
+pack wireless frames and radiotap headers the way dpkt 1.9.8 does.
 The [RPC module](docs/rpc.md) parses and packs ONC RPC calls and replies the way
 dpkt 1.9.8 does.
 The [DHCP module](docs/dhcp.md) parses and packs DHCP messages and their options
