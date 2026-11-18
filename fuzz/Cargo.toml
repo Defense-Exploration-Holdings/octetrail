@@ -36,6 +36,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "diameter"
+path = "fuzz_targets/diameter.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "dhcp"
 path = "fuzz_targets/dhcp.rs"
 test = false

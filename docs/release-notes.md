@@ -2,8 +2,9 @@
 
 ## Unreleased
 
-QQ now parses and packs the way dpkt 1.9.8 does: the new `octetrail.qq` module
-has `QQBasicPacket`, `QQ3Packet`, `QQ5Packet` and dpkt's constants.
+Diameter now parses and packs the way dpkt 1.9.8 does: the new
+`octetrail.diameter` module has `Diameter`, `AVP` and dpkt's constants, with
+the AVPs read in Rust in linear time.
 
 AH and ESP now parse and pack the way dpkt 1.9.8 does:
 
@@ -108,6 +109,9 @@ classes and constants.
 Telnet option stripping now works the way dpkt 1.9.8 does: the new
 `octetrail.telnet` module has `strip_options`, scanned in Rust, and dpkt's
 constants.
+
+QQ now parses and packs the way dpkt 1.9.8 does: the new `octetrail.qq` module
+has `QQBasicPacket`, `QQ3Packet`, `QQ5Packet` and dpkt's constants.
 
 SCCP now parses and packs the way dpkt 1.9.8 does: the new `octetrail.sccp`
 module has `SCCP`, dpkt's message classes and its message id constants.
