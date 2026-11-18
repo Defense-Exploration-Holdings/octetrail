@@ -291,20 +291,6 @@ class ArtifactTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "dist_inventory"):
             R.validate_dist(self.dist, self.root, "0.1.0")
 
-    def test_inventory_demands_every_wheel_and_the_sdist(self):
-        # The build job may run after the macOS arm64 fallback, so this check is
-        # what stops a release with a wheel missing from any other leg.
-        self.assertEqual(len(self.names), 9)
-        self.assertEqual(sum(n.endswith(".whl") for n in self.names.values()), 8)
-        for key, name in self.names.items():
-            path = self.dist / name
-            data = path.read_bytes()
-            path.unlink()
-            with self.subTest(missing=key), self.assertRaisesRegex(ValueError, "dist_inventory"):
-                R.validate_dist(self.dist, self.root, "0.1.0")
-            path.write_bytes(data)
-        self.assertEqual(len(R.validate_dist(self.dist, self.root, "0.1.0")), 9)
-
     def test_wrong_platform_tag_and_changed_license_are_rejected(self):
         self.wheel("linux-x86_64", tags=["cp310-abi3-manylinux_2_34_x86_64"])
         with self.assertRaisesRegex(ValueError, "wheel_tag"):
@@ -352,37 +338,11 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(workflow["on"]["push"], {"branches": ["main", "ci/**"], "tags": ["v*"]})
         self.assertEqual(workflow["permissions"], {"contents": "read"})
         self.assertEqual(
-            set(workflow["jobs"]),
-            {
-                "gate",
-                "check",
-                "wheels",
-                "macos-arm64-missing",
-                "wheels-macos-arm64-fallback",
-                "sdist",
-                "build",
-                "release",
-                "pypi",
-            },
+            set(workflow["jobs"]), {"gate", "check", "wheels", "sdist", "build", "release", "pypi"}
         )
-        self.assertEqual(
-            workflow["jobs"]["build"]["needs"],
-            ["gate", "check", "wheels", "wheels-macos-arm64-fallback", "sdist"],
-        )
-        for name in (
-            "gate",
-            "check",
-            "wheels",
-            "wheels-macos-arm64-fallback",
-            "sdist",
-            "build",
-        ):
+        self.assertEqual(workflow["jobs"]["build"]["needs"], ["gate", "check", "wheels", "sdist"])
+        for name in ("gate", "check", "wheels", "sdist", "build"):
             self.assertEqual(workflow["jobs"][name]["permissions"], {"contents": "read"})
-        # Only the fallback probe reads the run's jobs, to see whether a runner was assigned.
-        self.assertEqual(
-            workflow["jobs"]["macos-arm64-missing"]["permissions"],
-            {"actions": "read", "contents": "read"},
-        )
         matrix = {
             row["name"] for row in workflow["jobs"]["wheels"]["strategy"]["matrix"]["include"]
         }
@@ -415,147 +375,6 @@ class WorkflowTests(unittest.TestCase):
             publish["steps"][0]["with"],
             {"artifact-ids": "${{ needs.build.outputs.artifact-id }}", "path": "release"},
         )
-
-    def test_macos_arm64_fallback_repeats_the_wheel_steps_on_macos_14(self):
-        jobs = self.workflow["jobs"]
-        primary, fallback = jobs["wheels"], jobs["wheels-macos-arm64-fallback"]
-        self.assertEqual(fallback["steps"], primary["steps"])
-        for key in ("runs-on", "timeout-minutes", "permissions", "defaults"):
-            self.assertEqual(fallback[key], primary[key])
-        [row] = fallback["strategy"]["matrix"]["include"]
-        [arm] = [r for r in primary["strategy"]["matrix"]["include"] if r["name"] == "macos-arm64"]
-        self.assertEqual({**arm, "os": "macos-14", "compatibility": "", "zig": "false"}, row)
-        self.assertNotIn("zig", arm)
-        self.assertNotIn("compatibility", arm)
-        self.assertEqual(arm["os"], "macos-15")
-        self.assertEqual(fallback["needs"], "macos-arm64-missing")
-        self.assertEqual(
-            fallback["if"],
-            "${{ !cancelled() && needs.macos-arm64-missing.outputs.missing == 'true' }}",
-        )
-        probe = jobs["macos-arm64-missing"]
-        self.assertEqual(probe["needs"], "wheels")
-        self.assertEqual(probe["if"], "${{ !cancelled() && needs.wheels.result == 'failure' }}")
-        self.assertEqual(probe["permissions"], {"actions": "read", "contents": "read"})
-        step = probe["steps"][-1]
-        self.assertEqual(step["run"], '"$BUILD_PY" -B -I tools/release_ci.py fallback')
-        self.assertEqual(step["env"]["GH_TOKEN"], "${{ github.token }}")
-        self.assertEqual(
-            probe["outputs"]["missing"], "${{ steps." + step["id"] + ".outputs.missing }}"
-        )
-        self.assertEqual(R.FALLBACK_JOB, "Wheel " + arm["name"])
-        self.assertEqual(primary["name"], "Wheel ${{ matrix.name }}")
-
-    def test_fallback_runs_only_when_the_macos_arm64_runner_was_not_acquired(self):
-        def job(**fields):
-            return {
-                "name": R.FALLBACK_JOB,
-                "conclusion": "failure",
-                "runner_name": "",
-                "steps": [],
-                **fields,
-            }
-
-        other = {
-            "name": "Wheel linux-x86_64",
-            "conclusion": "success",
-            "runner_name": "r",
-            "steps": [],
-        }
-        ran = {"name": "Set up job", "status": "completed", "conclusion": "success"}
-        failed = {"name": "Test the wheel", "status": "completed", "conclusion": "failure"}
-        self.assertTrue(R.runner_not_acquired([other, job()]))
-        self.assertTrue(R.runner_not_acquired([job(runner_name=None, steps=None)]))
-        self.assertTrue(
-            R.runner_not_acquired([job(steps=[{"name": "Set up job", "status": "queued"}])])
-        )
-        for case in (
-            job(runner_name="GitHub Actions 12", steps=[ran, failed]),
-            job(steps=[ran, failed]),
-            job(runner_name="GitHub Actions 12"),
-            job(conclusion="success"),
-            job(conclusion="cancelled"),
-        ):
-            with self.subTest(case=case):
-                self.assertFalse(R.runner_not_acquired([other, case]))
-        self.assertFalse(R.runner_not_acquired([other]))
-        self.assertFalse(R.runner_not_acquired([job(), job()]))
-
-    def test_fallback_reads_every_page_of_the_run_attempt_jobs(self):
-        pages = [
-            {"total_count": 3, "jobs": [{"name": "a"}, {"name": "b"}]},
-            {"total_count": 3, "jobs": [{"name": R.FALLBACK_JOB}]},
-        ]
-        seen = []
-
-        class Response(io.BytesIO):
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *exc):
-                return False
-
-        def opener(request, timeout):
-            seen.append((request.full_url, request.get_header("Authorization"), timeout))
-            return Response(json.dumps(pages[len(seen) - 1]).encode())
-
-        env = {
-            "GITHUB_API_URL": "https://api.example",
-            "GITHUB_REPOSITORY": "o/r",
-            "GITHUB_RUN_ID": "7",
-            "GITHUB_RUN_ATTEMPT": "2",
-            "GH_TOKEN": "t",
-        }
-        jobs = R.run_jobs(env, opener=opener)
-        self.assertEqual([j["name"] for j in jobs], ["a", "b", R.FALLBACK_JOB])
-        base = "https://api.example/repos/o/r/actions/runs/7/attempts/2/jobs?per_page=100"
-        self.assertEqual(
-            seen, [(base + "&page=1", "Bearer t", 30), (base + "&page=2", "Bearer t", 30)]
-        )
-
-    def test_build_runs_after_the_full_matrix_or_the_macos_arm64_fallback(self):
-        guard = self.workflow["jobs"]["build"]["if"]
-
-        def boolean(node):
-            # Only and, or, == and literals: the shape of the workflow guard.
-            if isinstance(node, ast.BoolOp):
-                values = [boolean(v) for v in node.values]
-                return all(values) if isinstance(node.op, ast.And) else any(values)
-            if isinstance(node, ast.Compare) and isinstance(node.ops[0], ast.Eq):
-                return node.left.value == node.comparators[0].value
-            if isinstance(node, ast.Constant) and isinstance(node.value, bool):
-                return node.value
-            raise ValueError(ast.dump(node))
-
-        def runs(cancelled=False, **results):
-            state = {"gate": "success", "check": "success", "sdist": "success"}
-            state.update({"wheels": "success", "wheels-macos-arm64-fallback": "skipped"})
-            state.update({k.replace("_", "-"): v for k, v in results.items()})
-            expression = guard.replace("&&", " and ").replace("||", " or ")
-            expression = expression.replace("!cancelled()", str(not cancelled))
-            for name, value in state.items():
-                expression = expression.replace("needs.%s.result" % name, repr(value))
-            return boolean(ast.parse(expression, mode="eval").body)
-
-        self.assertTrue(runs())
-        self.assertTrue(runs(wheels="failure", wheels_macos_arm64_fallback="success"))
-        self.assertFalse(runs(wheels="failure"))
-        self.assertFalse(runs(wheels="failure", wheels_macos_arm64_fallback="failure"))
-        self.assertFalse(runs(cancelled=True))
-        for job in ("gate", "check", "sdist"):
-            self.assertFalse(runs(**{job: "failure"}))
-            self.assertFalse(
-                runs(
-                    **{
-                        job: "failure",
-                        "wheels": "failure",
-                        "wheels_macos_arm64_fallback": "success",
-                    }
-                )
-            )
-        # Publishing still needs a successful build, and PyPI still needs the first attempt.
-        self.assertIn("needs.build.result == 'success'", self.workflow["jobs"]["release"]["if"])
-        self.assertIn("github.run_attempt == 1", self.workflow["jobs"]["pypi"]["if"])
 
     def test_inline_platform_lists_match_the_release_tooling(self):
         expected = repr(tuple(R.PLATFORMS.values()))

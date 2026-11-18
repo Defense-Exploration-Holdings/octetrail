@@ -247,7 +247,42 @@ def constructed(package):
         k for k in (0, 4, 6, 17, 41) if ip6.IP6.get_proto(k).__name__ in ("IP", "TCP", "UDP", "IP6")
     )
     r["ext_hdrs"] = [ip6.EXT_HDRS, sorted((k, v.__name__) for k, v in ip6.EXT_HDRS_CLS.items())]
+    r["buffer_types"] = buffer_types(ip6)
     return r
+
+
+def buffer_types(ip6):
+    """Type names of the parsed slices for bytearray and memoryview input."""
+
+    def names(ext):
+        return [
+            type(ext).__name__,
+            type(getattr(ext, "data", None)).__name__,
+            [type(o["data"]).__name__ for o in getattr(ext, "options", [])],
+            [type(a).__name__ for a in getattr(ext, "addresses", [])],
+            type(getattr(ext, "auth_data", None)).__name__,
+        ]
+
+    found = {}
+    for kind in (bytearray, memoryview):
+        for name, raw in cases().items():
+            packet = attempt(lambda kind=kind, raw=raw: ip6.IP6(kind(bytes.fromhex(raw))))
+            if isinstance(packet, dict) and "error" in packet:
+                continue
+            packet = ip6.IP6(kind(bytes.fromhex(raw)))
+            found[kind.__name__ + "." + name] = [
+                type(packet.data).__name__,
+                [names(e) for e in packet.all_extension_headers],
+            ]
+        for cls, raw in (
+            (ip6.IP6HopOptsHeader, opts(17)),
+            (ip6.IP6RoutingHeader, routing(6, 2)),
+            (ip6.IP6FragmentHeader, fragment(6)),
+            (ip6.IP6AHHeader, ah(59)),
+            (ip6.IP6ESPHeader, bytes(8) + b"rest"),
+        ):
+            found[kind.__name__ + "." + cls.__name__] = names(cls(kind(raw)))
+    return found
 
 
 def exercise(package):

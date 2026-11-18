@@ -87,14 +87,15 @@ class IP6(Packet):
         self.all_extension_headers = []
         raw = buf if type(buf) is bytes else bytes(buf)
         _, rows, (start, end), next_ext_hdr, failure = _native._ipv6_unpack(raw)
+        src = _source(buf, raw)
         ext = None
         for row in rows:
-            ext = _extension(raw, row)
+            ext = _extension(src, row)
             self.extension_hdrs[row[0]] = ext
             self.all_extension_headers.append(ext)
         if failure is not None:
             raise _native_error(failure)
-        rest = raw[start:end]
+        rest = src[start:end]
 
         if next_ext_hdr is not None:
             self.p = next_ext_hdr
@@ -177,7 +178,7 @@ class IP6ExtensionHeader(Packet):
             raise struct.error("unpack requires a buffer of %d bytes" % self.__hdr_len__) from None
         except _native.Ipv6OptionsError:
             raise NeedData() from None
-        _fill(self, raw, row, lazy=False)
+        _fill(self, _source(buf, raw), row, lazy=False)
 
 
 class IP6OptsHeader(IP6ExtensionHeader):
@@ -315,9 +316,28 @@ def _fill(ext, raw, row, lazy):
         else:
             ext.data = raw[ds:de]
             ext.auth_data = raw[extra[0] : extra[1]]
+    elif kind == IP_PROTO_FRAGMENT:
+        ext.length = length
+        # dpkt sets a fragment header's data to b"", whatever the buffer type.
+        ext.data = bytes(raw[ds:de])
     else:
         ext.length = length
         ext.data = raw[ds:de]
+
+
+def _source(buf, raw):
+    """What to slice so that fields keep the buffer type, as dpkt's slices do.
+
+    ``raw`` is a bytes copy of ``buf``. Slicing a copy rather than ``buf`` keeps
+    later changes to a mutable buffer out of the lazily sliced AH fields.
+    """
+    if type(buf) is bytes:
+        return raw
+    if isinstance(buf, bytearray):
+        return bytearray(raw)
+    if isinstance(buf, memoryview):
+        return memoryview(raw)
+    return raw
 
 
 def _extension(raw, row):
