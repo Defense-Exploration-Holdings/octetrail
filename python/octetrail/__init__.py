@@ -42,6 +42,7 @@ from . import rip as rip
 from . import rpc as rpc
 from . import rtp as rtp
 from . import rx as rx
+from . import sccp as sccp
 from . import sctp as sctp
 from . import sip as sip
 from . import sll as sll
@@ -99,6 +100,7 @@ __all__.extend(("ah", "esp"))
 __all__.extend(("crc32c", "ospf", "sctp"))
 __all__.extend(("gre", "pim"))
 __all__.append("arp")
+__all__.append("sccp")
 __all__.append("aim")
 __all__.extend(("ieee80211", "radiotap"))
 __all__.append("rpc")
