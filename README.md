@@ -32,8 +32,6 @@ The [DNS module](docs/dns.md) parses and packs messages and common record fields
 the way dpkt 1.9.8 does, without changing transport payloads or performing lookups.
 The [HTTP module](docs/http.md) parses and packs HTTP/1.x requests and responses
 the way dpkt 1.9.8 does, without stream reassembly.
-The [SIP module](docs/sip.md) parses and packs SIP requests and responses the
-way dpkt 1.9.8 does, on the HTTP classes.
 The [Packet base class](docs/packet.md) is dpkt's, for writing your own header
 classes, with the checksum and hexdump helpers.
 The [Ethernet module](docs/ethernet.md) parses and packs Ethernet II, 802.3 LLC,

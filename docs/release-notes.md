@@ -2,9 +2,6 @@
 
 ## Unreleased
 
-SIP now parses and packs the way dpkt 1.9.8 does: the new `octetrail.sip`
-module has `Request` and `Response` on the HTTP classes.
-
 HTTP now follows dpkt 1.9.8's classes and errors:
 
 - API: `Message`, `Request` and `Response` are `Packet` subclasses with dpkt's

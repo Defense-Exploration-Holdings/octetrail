@@ -28,8 +28,7 @@ algorithms and independent synthetic fixtures are original work.
 
 The HTTP facade adapts dpkt's http.py, including its Message, Request and
 Response classes, under the retained BSD attribution. Native header and chunked
-body parsing and synthetic fixtures are original work. The SIP facade adapts
-dpkt's sip.py under the same retained upstream BSD license.
+body parsing and synthetic fixtures are original work.
 
 The TLS reference module also credits: Portion Copyright 2012 Google Inc.
 All rights reserved. Its API conventions use the same retained BSD attribution.
