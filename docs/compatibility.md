@@ -101,6 +101,8 @@ The [OSPF and SCTP modules](ospf-sctp.md) parse and pack those packets the way
 dpkt 1.9.8 does, with no declared differences.
 The [ARP module](arp.md) parses and packs ARP the way dpkt 1.9.8 does, with no
 declared differences.
+The [NetFlow module](netflow.md) parses and packs NetFlow exports the way dpkt
+1.9.8 does, with no declared differences.
 The [Diameter module](diameter.md) parses and packs Diameter the way dpkt 1.9.8
 does, with no declared differences.
 The [QQ module](qq.md) parses and packs QQ headers the way dpkt 1.9.8 does,

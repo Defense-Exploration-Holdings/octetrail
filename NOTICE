@@ -76,6 +76,8 @@ The OSPF, SCTP and CRC-32C modules adapt dpkt's ospf.py, sctp.py and crc32c.py
 under the same retained upstream BSD license.
 The ARP module adapts dpkt's arp.py, including its constants, under the same
 retained upstream BSD license.
+The NetFlow module adapts dpkt's netflow.py under the same retained upstream BSD
+license. Its Rust record split is original work.
 The Diameter module adapts dpkt's diameter.py, including its constants, under
 the same retained upstream BSD license. Its Rust AVP reader is original work.
 The QQ module adapts dpkt's qq.py, including its constants and command table,

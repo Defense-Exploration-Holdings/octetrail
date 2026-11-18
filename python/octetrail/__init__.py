@@ -28,6 +28,7 @@ from . import ipx as ipx
 from . import llc as llc
 from . import loopback as loopback
 from . import netbios as netbios
+from . import netflow as netflow
 from . import ntp as ntp
 from . import ospf as ospf
 from . import packet as packet
@@ -102,6 +103,7 @@ __all__.extend(("ah", "esp"))
 __all__.extend(("crc32c", "ospf", "sctp"))
 __all__.extend(("gre", "pim"))
 __all__.append("arp")
+__all__.append("netflow")
 __all__.append("diameter")
 __all__.append("qq")
 __all__.append("sccp")
