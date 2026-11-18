@@ -1,5 +1,6 @@
 """IPv6 and its extension headers, parsed and packed the way dpkt 1.9.8 does."""
 
+import gc
 import importlib.util
 import io
 import struct
@@ -218,20 +219,57 @@ class IPv6Tests(unittest.TestCase):
         with self.assertRaisesRegex(AttributeError, "'IP6AHHeader' object has no attribute 'note'"):
             first.note  # noqa: B018
 
+    def test_slices_keep_the_buffer_type(self):
+        raw = b"\x60" + bytes(5) + b"\xf4\x40" + bytes(32) + b"abc"
+        packet = ip6.IP6(bytearray(raw))
+        self.assertEqual((type(packet.data), packet.data), (bytearray, b"abc"))
+        self.assertIs(type(ip6.IP6(memoryview(raw)).data), memoryview)
+        self.assertIs(type(ip6.IP6(raw).data), bytes)
+        buf = bytearray(case("every_extension"))
+        packet = ip6.IP6(buf)
+        hop, routing, frag, auth, dst = packet.all_extension_headers
+        self.assertIs(type(hop.data), bytearray)
+        self.assertIs(type(routing.addresses[0]), bytearray)
+        # dpkt sets a fragment header's data to b"" whatever the buffer.
+        self.assertIs(type(frag.data), bytes)
+        expected = bytes(auth.auth_data)
+        buf[:] = bytes(len(buf))
+        # The AH fields are sliced on first use, from a copy taken when parsing.
+        self.assertEqual((type(auth.auth_data), auth.auth_data), (bytearray, expected))
+        self.assertIs(type(dst.data), bytearray)
+        self.assertIs(
+            type(ip6.IP6RoutingHeader(bytearray(F.routing(6, 2))).addresses[1]), bytearray
+        )
+
     def test_long_chains_parse_in_linear_time(self):
         def chain(count):
             body = b"".join(F.ah(51, b"") for _ in range(count)) + F.ah(59, b"")
             return F.base(51, body, plen=0)
 
-        start = time.perf_counter()
-        small = ip6.IP6(chain(2000))
-        small_time = time.perf_counter() - start
-        start = time.perf_counter()
-        large = ip6.IP6(chain(16000))
-        large_time = time.perf_counter() - start
+        def parse(count):
+            raw = chain(count)
+            # The fastest of a few runs, with the collector paused, keeps a
+            # slow or busy runner's pauses out of the comparison.
+            best = None
+            gc.collect()
+            gc.disable()
+            try:
+                for _ in range(3):
+                    start = time.perf_counter()
+                    packet = ip6.IP6(raw)
+                    elapsed = time.perf_counter() - start
+                    best = elapsed if best is None else min(best, elapsed)
+            finally:
+                gc.enable()
+            return packet, best
+
+        small, small_time = parse(1000)
+        large, large_time = parse(16000)
         self.assertEqual(len(large.all_extension_headers), 16001)
-        self.assertLess(large_time, max(small_time, 0.001) * 40)
-        self.assertEqual(len(small.all_extension_headers), 2001)
+        self.assertEqual(len(small.all_extension_headers), 1001)
+        # 16 times the headers: linear parsing takes about 16 to 21 times as
+        # long and quadratic parsing 256 times. The bound sits between the two.
+        self.assertLess(large_time, max(small_time, 0.001) * 80)
 
     def test_raw_ethernet_and_captures(self):
         wire = case("udp")

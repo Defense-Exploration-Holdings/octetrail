@@ -178,131 +178,6 @@ jobs:
           retention-days: 7
           compression-level: 0
 
-
-  macos-arm64-missing:
-    # GitHub sometimes fails to assign a macOS 15 arm64 runner ("not acquired"),
-    # which no timeout setting can extend. This asks the Actions API whether that
-    # leg failed without a runner. A failure in one of its steps leaves the
-    # fallback off, so the build job stays skipped.
-    name: Check whether the macOS arm64 runner was acquired
-    needs: wheels
-    if: ${{ !cancelled() && needs.wheels.result == 'failure' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      actions: read
-      contents: read
-    outputs:
-      missing: ${{ steps.probe.outputs.missing }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          submodules: false
-          lfs: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        id: python
-        with:
-          python-version: '3.12'
-      - name: Check how the macOS arm64 leg failed
-        id: probe
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BUILD_PY: ${{ steps.python.outputs.python-path }}
-        run: '"$BUILD_PY" -B -I tools/release_ci.py fallback'
-
-  wheels-macos-arm64-fallback:
-    # The same steps as the wheel matrix, on the macOS 14 arm64 runner.
-    name: Wheel ${{ matrix.name }} on the fallback runner
-    needs: macos-arm64-missing
-    if: ${{ !cancelled() && needs.macos-arm64-missing.outputs.missing == 'true' }}
-    strategy:
-      matrix:
-        include:
-          # compatibility and zig are empty, as they are for the macOS rows above.
-          - {name: macos-arm64, os: macos-14, target: aarch64-apple-darwin, deployment: '11.0', test: native, pythons: '3.10 3.14', compatibility: '', zig: false}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    permissions:
-      contents: read
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          submodules: false
-          lfs: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        if: matrix.test == 'native'
-        with:
-          python-version: ${{ matrix.pythons == '3.11 3.14' && '3.11' || '3.10' }}
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        id: python
-        with:
-          python-version: '3.14'
-      - name: Install the pinned toolchain, target and build tools
-        env:
-          TARGET: ${{ matrix.target }}
-          ZIG: ${{ matrix.zig }}
-          BUILD_PY: ${{ steps.python.outputs.python-path }}
-        run: |
-          rustup toolchain install 1.85.1 --profile minimal --component rustfmt --component clippy --target "$TARGET"
-          requirements=(-r tools/build-ci.txt)
-          if [ "$ZIG" = true ]; then requirements+=(-r tools/build-zig.txt); fi
-          "$BUILD_PY" -I -m pip --isolated install --index-url https://pypi.org/simple --require-hashes --only-binary=:all: "${requirements[@]}"
-      - name: Build the wheel
-        env:
-          TARGET: ${{ matrix.target }}
-          COMPATIBILITY: ${{ matrix.compatibility }}
-          ZIG: ${{ matrix.zig }}
-          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.deployment }}
-          BUILD_PY: ${{ steps.python.outputs.python-path }}
-        run: |
-          args=(--target "$TARGET" --out dist)
-          if [ -n "$COMPATIBILITY" ]; then args+=(--compatibility "$COMPATIBILITY"); fi
-          if [ "$ZIG" = true ]; then args+=(--zig); fi
-          if [ -z "$MACOSX_DEPLOYMENT_TARGET" ]; then unset MACOSX_DEPLOYMENT_TARGET; fi
-          "$BUILD_PY" -I tools/build_wheels.py "${args[@]}"
-          ls dist
-          files=(dist/*); test "${#files[@]}" = 1
-          "$BUILD_PY" -I tools/check_wheel.py dist/*.whl
-      - name: Test the wheel on this platform
-        if: matrix.test == 'native'
-        env:
-          PYTHONS: ${{ matrix.pythons }}
-        run: |
-          set -euo pipefail
-          for version in $PYTHONS; do
-            if [ "$RUNNER_OS" = Windows ]; then launcher=(py "-$version"); else launcher=("python$version"); fi
-            "${launcher[@]}" -m venv "$RUNNER_TEMP/venv-$version"
-            if [ "$RUNNER_OS" = Windows ]; then py="$RUNNER_TEMP/venv-$version/Scripts/python.exe"; else py="$RUNNER_TEMP/venv-$version/bin/python"; fi
-            "$py" -I -m pip --isolated install --no-index --no-deps dist/*.whl
-            "$py" -I -m pip --isolated check
-            (cd "$RUNNER_TEMP" && "$py" -B -I -m unittest discover -s "$GITHUB_WORKSPACE/tests/python")
-          done
-      - name: Test the wheel in Alpine
-        if: matrix.test == 'alpine'
-        run: |
-          set -euo pipefail
-          # Official python images by index digest (multi-arch).
-          for image in \
-            python:3.10-alpine@sha256:8ca9f9d0f4df2af674092e7e9d79ce7985e783cecfe070f8ea850801b6520bf7 \
-            python:3.14-alpine@sha256:5862d971d1f0ae26b258cefa4e893556b1d3aba81bd2ff30888704ad378bab67; do
-            docker run --rm --network none -v "$GITHUB_WORKSPACE:/src:ro" "$image" sh -euc '
-              python -m venv /tmp/venv
-              /tmp/venv/bin/python -I -m pip --isolated install --no-index --no-deps /src/dist/*.whl
-              cd /tmp && /tmp/venv/bin/python -B -I -m unittest discover -s /src/tests/python'
-          done
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: dist-${{ matrix.name }}
-          path: dist/*.whl
-          if-no-files-found: error
-          retention-days: 7
-          compression-level: 0
-
   sdist:
     name: Source distribution
     runs-on: ubuntu-24.04
@@ -346,16 +221,7 @@ jobs:
 
   build:
     name: Collect and verify the release files
-    needs: [gate, check, wheels, wheels-macos-arm64-fallback, sdist]
-    # Runs when every wheel leg passed, or when the fallback rebuilt the macOS
-    # arm64 wheel. The inventory check then still demands all eight wheels and
-    # the sdist, so a missing wheel from any other leg fails here.
-    if: >-
-      !cancelled() &&
-      needs.gate.result == 'success' &&
-      needs.check.result == 'success' &&
-      needs.sdist.result == 'success' &&
-      (needs.wheels.result == 'success' || needs.wheels-macos-arm64-fallback.result == 'success')
+    needs: [gate, check, wheels, sdist]
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     permissions:

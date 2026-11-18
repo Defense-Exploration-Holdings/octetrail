@@ -101,6 +101,9 @@ The [OSPF and SCTP modules](ospf-sctp.md) parse and pack those packets the way
 dpkt 1.9.8 does, with no declared differences.
 The [ARP module](arp.md) parses and packs ARP the way dpkt 1.9.8 does, with no
 declared differences.
+The [DHCP module](dhcp.md) parses and packs DHCP the way dpkt 1.9.8 does. An
+option type with no length byte raises an error that is both an `UnpackError`
+and dpkt's `IndexError`.
 The [SLL, SLL2 and loopback modules](sll-loopback.md) parse and pack those
 headers the way dpkt 1.9.8 does. An IPv6 payload failing with
 `FragmentOffsetError` stays bytes, or escapes from `Loopback` as that error,

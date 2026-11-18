@@ -55,6 +55,11 @@ The version is not checked.
    class. The table is shared with `IP`, as in dpkt. A UDP payload larger than 65535 bytes, possible when `plen` is 0, is
    decoded as UDP and packs back as it is.
 
+The slices keep the type of the buffer, as in dpkt, so a `bytearray` gives a
+`bytearray` payload, extension header `data`, option data, routing addresses
+and AH `auth_data`, and a `memoryview` gives memoryviews. A fragment header's
+`data` is always bytes, as in dpkt.
+
 ## Errors
 
 - `NeedData`: the input is shorter than 40 bytes, an extension header is

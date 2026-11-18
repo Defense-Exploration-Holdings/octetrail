@@ -2,20 +2,10 @@
 
 ## Unreleased
 
-SIP now parses and packs the way dpkt 1.9.8 does: the new `octetrail.sip`
-module has `Request` and `Response` on the HTTP classes.
+Fixed:
 
-HTTP now follows dpkt 1.9.8's classes and errors:
-
-- API: `Message`, `Request` and `Response` are `Packet` subclasses with dpkt's
-  `repr()`. A subclass can set `__methods` and `__proto` under the class name
-  `Request` or `Response`, as dpkt's SIP module does.
-- Errors: a short body and an invalid header raise dpkt's messages. A
-  Content-Length that is not an integer, a repeated Content-Length and a
-  repeated Transfer-Encoding raise `http.HeaderValueError`,
-  `http.HeaderTypeError` and `http.HeaderAttributeError`. A Content-Length or
-  chunk size outside `Py_ssize_t` raises `http.LengthOverflowError`. Each is
-  both an `UnpackError` and the builtin error dpkt raises, with dpkt's message.
+- IPv6 given a `bytearray` or `memoryview` keeps that type in `data` and in its
+  extension header fields, as dpkt 1.9.8 does. Earlier releases returned bytes.
 
 OSPF and SCTP now parse and pack the way dpkt 1.9.8 does:
 
@@ -31,6 +21,15 @@ AH and ESP now parse and pack the way dpkt 1.9.8 does:
   next header through the IP protocol table.
 - An AH header whose inner IPv6 packet raises `ip6.FragmentOffsetError` keeps
   that packet as bytes, where dpkt raises `AttributeError`.
+
+DHCP now parses and packs the way dpkt 1.9.8 does: the new `octetrail.dhcp`
+module has `DHCP` and dpkt's constants, with the options read in Rust. An
+option type with no length byte raises `dhcp.MissingLengthError`, which is both
+an `UnpackError` and an `IndexError`.
+
+Telnet option stripping now works the way dpkt 1.9.8 does: the new
+`octetrail.telnet` module has `strip_options`, scanned in Rust, and dpkt's
+constants.
 
 ATA over Ethernet now parses and packs the way dpkt 1.9.8 does: the new
 `octetrail.aoe`, `octetrail.aoeata` and `octetrail.aoecfg` modules have dpkt's
@@ -105,9 +104,20 @@ Portmap, Rx, TNS, Yahoo Messenger, SMB and RFB now parse and pack the way dpkt
 `octetrail.yahoo`, `octetrail.smb` and `octetrail.rfb` modules have dpkt's
 classes and constants.
 
-Telnet option stripping now works the way dpkt 1.9.8 does: the new
-`octetrail.telnet` module has `strip_options`, scanned in Rust, and dpkt's
-constants.
+HTTP now follows dpkt 1.9.8's classes and errors:
+
+- API: `Message`, `Request` and `Response` are `Packet` subclasses with dpkt's
+  `repr()`. A subclass can set `__methods` and `__proto` under the class name
+  `Request` or `Response`, as dpkt's SIP module does.
+- Errors: a short body and an invalid header raise dpkt's messages. A
+  Content-Length that is not an integer, a repeated Content-Length and a
+  repeated Transfer-Encoding raise `http.HeaderValueError`,
+  `http.HeaderTypeError` and `http.HeaderAttributeError`. A Content-Length or
+  chunk size outside `Py_ssize_t` raises `http.LengthOverflowError`. Each is
+  both an `UnpackError` and the builtin error dpkt raises, with dpkt's message.
+
+SIP now parses and packs the way dpkt 1.9.8 does: the new `octetrail.sip`
+module has `Request` and `Response` on the HTTP classes.
 
 ## 0.5.1
 

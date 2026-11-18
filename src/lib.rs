@@ -11,6 +11,7 @@ use std::io::{self, Read};
 use std::iter::FusedIterator;
 
 pub mod cdp;
+pub mod dhcp;
 pub mod dns;
 pub mod dtp;
 pub mod ethernet;
