@@ -1,5 +1,11 @@
 # Release notes
 
+## 0.6.1
+
+Fix the release workflow so it publishes when the macOS arm64 fallback is not
+needed. 0.6.1 carries the 0.6.0 changes below. 0.6.0 was never published,
+because its publish jobs were skipped. The code is the same as 0.6.0.
+
 ## 0.6.0
 
 HTTP/2 now parses and packs the way dpkt 1.9.8 does: the new `octetrail.http2`

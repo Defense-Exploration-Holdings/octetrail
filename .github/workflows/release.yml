@@ -414,6 +414,7 @@ jobs:
     name: Publish verified GitHub Release assets
     needs: build
     if: >-
+      !cancelled() &&
       github.event_name == 'push' &&
       github.repository == 'Defense-Exploration-Holdings/octetrail' &&
       github.event.repository.id == 1457516742 &&
@@ -605,6 +606,7 @@ jobs:
     name: Publish tested files to PyPI
     needs: build
     if: >-
+      !cancelled() &&
       github.event_name == 'push' &&
       github.repository == 'Defense-Exploration-Holdings/octetrail' &&
       github.event.repository.id == 1457516742 &&

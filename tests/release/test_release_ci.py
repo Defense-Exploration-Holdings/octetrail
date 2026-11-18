@@ -9,6 +9,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tarfile
@@ -60,14 +61,19 @@ def evaluate_guard(expression, context):
     """Evaluate the workflow's restricted conjunction of exact comparisons."""
     results = []
     for term in expression.split("&&"):
-        field, literal = term.strip().split(" == ")
+        if term.strip() == "!cancelled()":
+            results.append(not context.get("cancelled", False))
+            continue
+        operator = " != " if " != " in term else " == "
+        field, literal = term.strip().split(operator)
         value = context
         for name in field.split("."):
             value = value[name]
         expected = {"true": True, "false": False}.get(literal)
         if expected is None:
             expected = ast.literal_eval(literal)
-        results.append(type(value) is type(expected) and value == expected)
+        equal = type(value) is type(expected) and value == expected
+        results.append(equal if operator == " == " else not equal)
     return all(results)
 
 
@@ -554,8 +560,38 @@ class WorkflowTests(unittest.TestCase):
                 )
             )
         # Publishing still needs a successful build, and PyPI still needs the first attempt.
+        for job in ("release", "pypi"):
+            self.assertTrue(self.workflow["jobs"][job]["if"].startswith("!cancelled() && "))
         self.assertIn("needs.build.result == 'success'", self.workflow["jobs"]["release"]["if"])
         self.assertIn("github.run_attempt == 1", self.workflow["jobs"]["pypi"]["if"])
+
+    def test_jobs_with_needs_use_a_status_function(self):
+        # Without one, GitHub adds success(), which is false when any upstream
+        # job was skipped, such as the macOS arm64 fallback on a normal run.
+        status = re.compile(r"(?<![\w.])(!?cancelled|always|success|failure)\(\)")
+        for name, job in self.workflow["jobs"].items():
+            if job.get("needs"):
+                with self.subTest(job=name):
+                    self.assertRegex(str(job.get("if", "")), status)
+
+    def test_publish_guards_pass_a_successful_build_and_stop_on_cancel(self):
+        context = {
+            "github": {
+                "event_name": "push",
+                "repository": R.CANONICAL,
+                "event": event(),
+                "ref_type": "tag",
+                "ref_protected": True,
+                "run_attempt": 1,
+            },
+            "needs": {"build": {"result": "success", "outputs": {"publish": "true", "artifact-id": "1"}}},
+            "vars": {"WHEEL_RELEASES_ENABLED": "true", "PYPI_PUBLISHING_ENABLED": "true"},
+        }
+        for job in ("release", "pypi"):
+            guard = self.workflow["jobs"][job]["if"]
+            with self.subTest(job=job):
+                self.assertTrue(evaluate_guard(guard, context))
+                self.assertFalse(evaluate_guard(guard, {**context, "cancelled": True}))
 
     def test_inline_platform_lists_match_the_release_tooling(self):
         expected = repr(tuple(R.PLATFORMS.values()))
