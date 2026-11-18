@@ -36,6 +36,7 @@ from . import radius as radius
 from . import raw as raw
 from . import rfb as rfb
 from . import rip as rip
+from . import rpc as rpc
 from . import rtp as rtp
 from . import rx as rx
 from . import sctp as sctp
@@ -95,6 +96,7 @@ __all__.extend(("ah", "esp"))
 __all__.extend(("crc32c", "ospf", "sctp"))
 __all__.extend(("gre", "pim"))
 __all__.append("arp")
+__all__.append("rpc")
 __all__.append("dhcp")
 __all__.append("sip")
 __all__.append("telnet")
