@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import urllib.request
 
 try:
     import tomllib
@@ -364,9 +365,59 @@ def verify(directory, interpreters, manifest):
     print(f"{len(hashes)} release files passed release checks")
 
 
+# The macOS 15 arm64 leg of the wheel matrix. GitHub sometimes cannot assign it a runner,
+# and the job then fails with "not acquired" before any step runs.
+FALLBACK_JOB = "Wheel macos-arm64"
+
+
+def runner_not_acquired(jobs, name=FALLBACK_JOB):
+    """Whether the named job failed without a runner, rather than in a step."""
+    found = [job for job in jobs if job.get("name") == name]
+    if len(found) != 1:
+        return False
+    [job] = found
+    return (
+        job.get("conclusion") == "failure"
+        and not job.get("runner_name")
+        and not any(step.get("status") == "completed" for step in job.get("steps") or [])
+    )
+
+
+def run_jobs(env, opener=urllib.request.urlopen):
+    """The jobs of this workflow run attempt, from the Actions API."""
+    base = env.get("GITHUB_API_URL", "https://api.github.com")
+    url = (
+        f"{base}/repos/{env['GITHUB_REPOSITORY']}/actions/runs/{env['GITHUB_RUN_ID']}"
+        f"/attempts/{env['GITHUB_RUN_ATTEMPT']}/jobs?per_page=100"
+    )
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": "Bearer " + env["GH_TOKEN"],
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    jobs = []
+    for page in range(1, 11):
+        request = urllib.request.Request(f"{url}&page={page}", headers=headers)
+        with opener(request, timeout=30) as response:
+            body = json.load(response)
+        jobs += body["jobs"]
+        if not body["jobs"] or len(jobs) >= body["total_count"]:
+            return jobs
+    raise ValueError("run_jobs_pages")
+
+
+def fallback():
+    missing = runner_not_acquired(run_jobs(os.environ))
+    write_outputs({"missing": str(missing).lower()})
+    print(
+        "macOS arm64 fallback: "
+        + ("the leg was not acquired" if missing else "not needed, the leg ran or is absent")
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("gate", "check", "verify"))
+    parser.add_argument("command", choices=("gate", "check", "verify", "fallback"))
     parser.add_argument("--interpreter", action="append", default=[])
     parser.add_argument("--dist", type=Path, default=ROOT / "dist")
     parser.add_argument("--manifest", type=Path, default=ROOT / "SHA256SUMS")
@@ -375,6 +426,8 @@ def main():
         gate()
     elif args.command == "check":
         check()
+    elif args.command == "fallback":
+        fallback()
     else:
         verify(args.dist, args.interpreter, args.manifest)
 
