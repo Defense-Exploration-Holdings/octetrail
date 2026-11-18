@@ -1,6 +1,5 @@
 """HTTP requests and responses parsed and packed the way dpkt 1.9.8 does."""
 
-import gc
 import importlib.util
 import io
 import subprocess
@@ -269,20 +268,9 @@ class HttpTests(unittest.TestCase):
         def parse(count):
             names = b"".join(b"X-%d: v\r\n" % i for i in range(count))
             raw = b"GET / HTTP/1.1\r\n" + names + b"X-0: w\r\n\r\n"
-            # The fastest of a few runs, with the collector paused, keeps a
-            # slow or busy runner's pauses out of the comparison.
-            best = None
-            gc.collect()
-            gc.disable()
-            try:
-                for _ in range(3):
-                    start = time.perf_counter()
-                    r = http.Request(raw)
-                    elapsed = time.perf_counter() - start
-                    best = elapsed if best is None else min(best, elapsed)
-            finally:
-                gc.enable()
-            return r, best
+            start = time.perf_counter()
+            r = http.Request(raw)
+            return r, time.perf_counter() - start
 
         small, small_time = parse(2000)
         large, large_time = parse(32000)
@@ -290,9 +278,7 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(len(large.headers), 32000)
         self.assertEqual(list(large.headers)[:2], ["x-0", "x-1"])
         self.assertEqual(large.headers["x-0"], ["v", "w"])
-        # 16 times the headers: linear parsing takes about 16 times as long and
-        # quadratic parsing 256 times. The bound sits between the two.
-        self.assertLess(large_time, max(small_time, 0.001) * 80)
+        self.assertLess(large_time, max(small_time, 0.001) * 64)
 
     def test_optimized_probe_rejects_wrong_version(self):
         result = subprocess.run(

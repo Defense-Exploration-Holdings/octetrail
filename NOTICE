@@ -28,7 +28,8 @@ algorithms and independent synthetic fixtures are original work.
 
 The HTTP facade adapts dpkt's http.py, including its Message, Request and
 Response classes, under the retained BSD attribution. Native header and chunked
-body parsing and synthetic fixtures are original work.
+body parsing and synthetic fixtures are original work. The SIP facade adapts
+dpkt's sip.py under the same retained upstream BSD license.
 
 The TLS reference module also credits: Portion Copyright 2012 Google Inc.
 All rights reserved. Its API conventions use the same retained BSD attribution.
@@ -75,5 +76,7 @@ The OSPF, SCTP and CRC-32C modules adapt dpkt's ospf.py, sctp.py and crc32c.py
 under the same retained upstream BSD license.
 The ARP module adapts dpkt's arp.py, including its constants, under the same
 retained upstream BSD license.
+The DHCP module adapts dpkt's dhcp.py, including its constants, under the same
+retained upstream BSD license. Its Rust option reader is original work.
 The SLL, SLL2 and loopback facades adapt dpkt's sll.py, sll2.py and
 loopback.py under the same retained upstream BSD license.

@@ -32,6 +32,8 @@ The [DNS module](docs/dns.md) parses and packs messages and common record fields
 the way dpkt 1.9.8 does, without changing transport payloads or performing lookups.
 The [HTTP module](docs/http.md) parses and packs HTTP/1.x requests and responses
 the way dpkt 1.9.8 does, without stream reassembly.
+The [SIP module](docs/sip.md) parses and packs SIP requests and responses the
+way dpkt 1.9.8 does, on the HTTP classes.
 The [Packet base class](docs/packet.md) is dpkt's, for writing your own header
 classes, with the checksum and hexdump helpers.
 The [Ethernet module](docs/ethernet.md) parses and packs Ethernet II, 802.3 LLC,
@@ -64,6 +66,8 @@ The [OSPF and SCTP modules](docs/ospf-sctp.md) parse and pack those packets the
 way dpkt 1.9.8 does, and IPv4 and IPv6 decode them.
 The [ARP module](docs/arp.md) parses and packs ARP the way dpkt 1.9.8 does, and
 Ethernet decodes it.
+The [DHCP module](docs/dhcp.md) parses and packs DHCP messages and their options
+the way dpkt 1.9.8 does.
 The [SLL, SLL2 and loopback modules](docs/sll-loopback.md) parse and pack the
 link-layer headers of Linux cooked and null/loopback captures the way dpkt
 1.9.8 does.

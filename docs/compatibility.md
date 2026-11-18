@@ -50,6 +50,11 @@ compressed names the way dpkt 1.9.8 does, with dpkt's classes and subclass
 hooks, except one declared difference for text that is not UTF-8. It does not
 add transport dispatch.
 The [HTTP module](http.md) parses and packs HTTP/1.x requests and responses,
+including chunked bodies, the way dpkt 1.9.8 does. Three header errors that
+dpkt raises as builtin errors are declared. No automatic application dispatch
+is added.
+The [SIP module](sip.md) parses and packs SIP requests and responses the way
+dpkt 1.9.8 does, with no declared differences.
 including chunked bodies, the way dpkt 1.9.8 does. Three header errors and
 the overflow of a Content-Length or chunk size, which dpkt raises as builtin
 errors, are declared. No automatic application dispatch is added.
@@ -96,6 +101,9 @@ The [OSPF and SCTP modules](ospf-sctp.md) parse and pack those packets the way
 dpkt 1.9.8 does, with no declared differences.
 The [ARP module](arp.md) parses and packs ARP the way dpkt 1.9.8 does, with no
 declared differences.
+The [DHCP module](dhcp.md) parses and packs DHCP the way dpkt 1.9.8 does. An
+option type with no length byte raises an error that is both an `UnpackError`
+and dpkt's `IndexError`.
 The [SLL, SLL2 and loopback modules](sll-loopback.md) parse and pack those
 headers the way dpkt 1.9.8 does. An IPv6 payload failing with
 `FragmentOffsetError` stays bytes, or escapes from `Loopback` as that error,
