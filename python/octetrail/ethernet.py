@@ -11,7 +11,7 @@ import importlib
 import struct
 
 from . import _native, llc
-from .errors import NeedData, PackError, UnpackError
+from .errors import NeedData, NestingError, PackError, UnpackError
 from .packet import _LAYERS, Packet
 
 ETH_CRC_LEN = 4
@@ -123,6 +123,10 @@ class Ethernet(Packet):
             eth_type = self._next_type or self.type
             self.data = self._typesw[eth_type](buf)
             setattr(self, self.data.__class__.__name__.lower(), self.data)
+        except NestingError:
+            raise
+        except RecursionError as error:
+            raise NestingError(*error.args) from None
         except (KeyError, UnpackError):
             self.data = buf
 

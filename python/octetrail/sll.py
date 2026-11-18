@@ -5,7 +5,7 @@ The payload is decoded through the Ethernet type table.
 """
 
 from . import arp, ethernet
-from .errors import UnpackError
+from .errors import NestingError, UnpackError
 from .packet import Packet
 
 
@@ -35,5 +35,9 @@ class SLL(Packet):
         try:
             self.data = self._typesw[self.ethtype](self.data)
             setattr(self, self.data.__class__.__name__.lower(), self.data)
+        except NestingError:
+            raise
+        except RecursionError as error:
+            raise NestingError(*error.args) from None
         except (KeyError, UnpackError):
             pass

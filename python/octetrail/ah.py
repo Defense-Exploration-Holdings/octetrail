@@ -5,7 +5,7 @@ gives, which the :class:`octetrail.Packet` base reads.
 """
 
 from . import ip
-from .errors import UnpackError
+from .errors import NestingError, UnpackError
 from .packet import Packet
 
 
@@ -40,6 +40,10 @@ class AH(Packet):
         try:
             self.data = ip.IP.get_proto(self.nxt)(buf)
             setattr(self, self.data.__class__.__name__.lower(), self.data)
+        except NestingError:
+            raise
+        except RecursionError as error:
+            raise NestingError(*error.args) from None
         except (KeyError, UnpackError):
             self.data = buf
 

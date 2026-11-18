@@ -8,7 +8,7 @@ control bytes.
 import struct
 
 from . import ppp
-from .errors import NeedData, PackError, UnpackError
+from .errors import NeedData, NestingError, PackError, UnpackError
 from .packet import Packet
 
 # RFC 2516 codes
@@ -50,6 +50,10 @@ class PPPoE(Packet):
             if self.code == 0:
                 # PPPoE carries PPP without the usual address and control bytes.
                 self.data = self.ppp = PPP(self.data)
+        except NestingError:
+            raise
+        except RecursionError as error:
+            raise NestingError(*error.args) from None
         except UnpackError:
             pass
 
@@ -73,6 +77,10 @@ class PPP(ppp.PPP):
         try:
             self.data = self._protosw[self.p](self.data)
             setattr(self, self.data.__class__.__name__.lower(), self.data)
+        except NestingError:
+            raise
+        except RecursionError as error:
+            raise NestingError(*error.args) from None
         except (KeyError, struct.error, UnpackError):
             pass
 

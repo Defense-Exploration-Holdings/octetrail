@@ -7,7 +7,7 @@ the classes in ``AOE._cmdsw``.
 import importlib
 import struct
 
-from .errors import UnpackError
+from .errors import NestingError, UnpackError
 from .packet import Packet
 
 
@@ -51,6 +51,10 @@ class AOE(Packet):
         try:
             self.data = self._cmdsw[self.cmd](self.data)
             setattr(self, self.data.__class__.__name__.lower(), self.data)
+        except NestingError:
+            raise
+        except RecursionError as error:
+            raise NestingError(*error.args) from None
         except (KeyError, struct.error, UnpackError):
             pass
 

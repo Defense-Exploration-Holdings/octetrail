@@ -1,5 +1,56 @@
 # Release notes
 
+## 0.7.0
+
+Packets whose headers nest deeper than the Python recursion limit now raise
+`octetrail.NestingError`, both an `UnpackError` and a `RecursionError`, where
+dpkt raises `RecursionError`. Payload decoders that keep bytes on an
+`UnpackError` let it through to the caller, so long chains of IPv4 in IPv4,
+IPv6 in IPv4, AH or GRE headers fail as they do in dpkt.
+
+MRT routing records now parse and pack the way dpkt 1.9.8 does: the new
+`octetrail.mrt` module has dpkt's `MRTHeader`, `TableDump`, `BGP4MPMessage` and
+`BGP4MPMessage_32` classes and constants. Table dump attributes are read with
+`octetrail.bgp` in linear time.
+
+BGP-4 messages now parse and pack the way dpkt 1.9.8 does:
+
+- New module: `octetrail.bgp` with dpkt's message, attribute and route classes
+  and constants.
+- An EVPN route that ends before its MAC or IP address length byte raises
+  `bgp.EVPNIndexError`, both an `UnpackError` and an `IndexError`, with dpkt's
+  message. dpkt raises `IndexError`.
+- Long route, attribute and community lists parse in linear time, where dpkt
+  takes quadratic time.
+
+H.225.0 call signaling now parses and packs the way dpkt 1.9.8 does: the new
+`octetrail.h225` module has dpkt's `H225` and `H225.IE` classes and constants,
+with information element boundaries found in Rust in linear time.
+
+ASN.1 now decodes the way dpkt 1.9.8 does:
+
+- New module: `octetrail.asn1` with `decode`, `utctime` and dpkt's constants.
+  The element walk runs in Rust.
+- Where dpkt raises `IndexError`, `struct.error`, `ValueError` or `TypeError`,
+  `asn1.ShortIndexError`, `asn1.ShortStructError`, `asn1.TimeValueError` and
+  `asn1.TimeTypeError` are both an `UnpackError` and that error, with dpkt's
+  message.
+- Nesting deeper than 512 levels raises `asn1.NestingError`, which is
+  `octetrail.NestingError`. A decode that would produce more than 262,144 elements
+  raises `asn1.ParseLimitError`, because dpkt's result can grow exponentially
+  with the input.
+
+Snoop capture files now read and write the way dpkt 1.9.8 does:
+
+- New module: `octetrail.snoop` with `Reader`, `Writer`, `FileHdr`, `PktHdr`
+  and dpkt's constants.
+- A file without the snoop magic raises `snoop.HeaderError`, an `UnpackError`
+  and `ValueError` subclass, and an unknown link type raises
+  `snoop.LinktypeError`, an `UnpackError` and `KeyError` subclass. dpkt raises
+  `ValueError` and `KeyError`.
+- Record bodies are read in bounded pieces, so a hostile record length does not
+  allocate memory for data the file does not hold.
+
 ## 0.6.2
 
 0.6.2 carries the 0.6.1 and 0.6.0 changes below. 0.6.1 was never published,

@@ -9,7 +9,7 @@ import struct
 from functools import partial
 
 from . import _native, ip
-from .errors import NeedData, UnpackError
+from .errors import NeedData, NestingError, UnpackError
 from .packet import Packet
 
 IP_PROTO_HOPOPTS = 0
@@ -110,6 +110,10 @@ class IP6(Packet):
         try:
             self.data = self._decode(next_ext_hdr, rest)
             setattr(self, self.data.__class__.__name__.lower(), self.data)
+        except NestingError:
+            raise
+        except RecursionError as error:
+            raise NestingError(*error.args) from None
         except (KeyError, UnpackError):
             self.data = rest
 

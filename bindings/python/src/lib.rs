@@ -473,13 +473,17 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     )?;
     tcp::register(module)?;
     telnet::register(module)?;
+    h225::register(module)?;
+    asn1::register(module)?;
     Ok(())
 }
 
+mod asn1;
 mod cdp;
 mod dhcp;
 mod diameter;
 mod gre;
+mod h225;
 mod http2;
 mod ieee80211;
 mod netflow;

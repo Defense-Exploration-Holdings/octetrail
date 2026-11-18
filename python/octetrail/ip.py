@@ -10,7 +10,7 @@ import struct
 import warnings
 
 from . import _native
-from .errors import UnpackError
+from .errors import NestingError, UnpackError
 from .packet import _LAYERS, Packet
 
 _ip_proto_names = {}  # {1: 'ICMP', 6: 'TCP', 17: 'UDP', etc.}
@@ -103,6 +103,10 @@ class IP(Packet):
         try:
             self.data = self._protosw[self.p](buf) if self.offset == 0 else buf
             setattr(self, self.data.__class__.__name__.lower(), self.data)
+        except NestingError:
+            raise
+        except RecursionError as error:
+            raise NestingError(*error.args) from None
         except (KeyError, UnpackError):
             self.data = buf
 

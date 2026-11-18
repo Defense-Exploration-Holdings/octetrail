@@ -70,6 +70,15 @@ The [HTTP/2 module](docs/http2.md) parses and packs HTTP/2 frames the way dpkt
 1.9.8 does.
 The [gzip module](docs/gzip.md) parses and packs gzip member headers the way dpkt
 1.9.8 does.
+The [snoop module](docs/snoop.md) reads and writes snoop capture files the way
+dpkt 1.9.8 does.
+The [H.225.0 module](docs/h225.md) parses and packs H.323 call signaling the way
+dpkt 1.9.8 does.
+The [ASN.1 module](docs/asn1.md) decodes BER the way dpkt 1.9.8 does.
+The [BGP module](docs/bgp.md) parses and packs BGP-4 messages the way dpkt
+1.9.8 does.
+The [MRT module](docs/mrt.md) parses and packs MRT routing records the way dpkt
+1.9.8 does.
 The [NetFlow module](docs/netflow.md) parses and packs NetFlow version 1, 5, 6
 and 7 exports the way dpkt 1.9.8 does.
 The [Diameter module](docs/diameter.md) parses and packs Diameter messages and
@@ -92,7 +101,7 @@ link-layer headers of Linux cooked and null/loopback captures the way dpkt
 The [SSL and TLS module](docs/tls.md) parses and packs records, handshakes,
 hellos and certificate lists the way dpkt 1.9.8 does, with dpkt's cipher suite table.
 
-See the [0.6.2 release notes](docs/release-notes.md) for the changes
+See the [0.7.0 release notes](docs/release-notes.md) for the changes
 and their compatibility limits.
 
 ## Use the classic-pcap reader

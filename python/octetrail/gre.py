@@ -7,7 +7,7 @@ dpkt's ``dpkt.gre`` and are built on :class:`octetrail.Packet`.
 import struct
 
 from . import _native, ethernet
-from .errors import NeedData, UnpackError
+from .errors import NeedData, NestingError, UnpackError
 from .packet import Packet
 
 GRE_CP = 0x8000  # Checksum Present
@@ -93,6 +93,10 @@ class GRE(Packet):
         try:
             self.data = ethernet.Ethernet._typesw[self.p](self.data)
             setattr(self, self.data.__class__.__name__.lower(), self.data)
+        except NestingError:
+            raise
+        except RecursionError as error:
+            raise NestingError(*error.args) from None
         except (KeyError, UnpackError):
             pass
 

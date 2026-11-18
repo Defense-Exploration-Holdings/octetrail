@@ -8,7 +8,7 @@ module is loaded.
 import importlib
 import struct
 
-from .errors import NeedData, PackError, UnpackError
+from .errors import NeedData, NestingError, PackError, UnpackError
 from .packet import Packet
 
 # http://www.iana.org/assignments/ppp-numbers
@@ -54,6 +54,10 @@ class PPP(Packet):
         try:
             self.data = self._protosw[self.p](self.data)
             setattr(self, self.data.__class__.__name__.lower(), self.data)
+        except NestingError:
+            raise
+        except RecursionError as error:
+            raise NestingError(*error.args) from None
         except (KeyError, struct.error, UnpackError):
             pass
 

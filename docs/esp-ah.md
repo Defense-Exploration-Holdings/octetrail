@@ -35,7 +35,8 @@ is computed.
 
 A header shorter than its fixed length raises `NeedData`. Inside IPv4 such a
 payload stays bytes. As with IPv4 in IPv4, a chain of AH headers deeper than
-the Python recursion limit raises `RecursionError`, as in dpkt.
+the Python recursion limit raises [`NestingError`](nesting.md), both an
+`UnpackError` and the `RecursionError` dpkt raises.
 
 One difference from dpkt 1.9.8 is declared. When an AH header carries IPv6
 whose next header is 44 after an extension header that is not a fragment

@@ -90,3 +90,17 @@ path = "fuzz_targets/tls.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "h225"
+path = "fuzz_targets/h225.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "asn1"
+path = "fuzz_targets/asn1.rs"
+test = false
+doc = false
+bench = false

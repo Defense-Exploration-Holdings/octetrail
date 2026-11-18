@@ -6,6 +6,8 @@ from . import aoe as aoe
 from . import aoeata as aoeata
 from . import aoecfg as aoecfg
 from . import arp as arp
+from . import asn1 as asn1
+from . import bgp as bgp
 from . import capture, ethernet, ip, pcap, pcapng
 from . import cdp as cdp
 from . import crc32c as crc32c
@@ -17,6 +19,7 @@ from . import edp as edp
 from . import esp as esp
 from . import gre as gre
 from . import gzip as gzip
+from . import h225 as h225
 from . import hsrp as hsrp
 from . import http as http
 from . import http2 as http2
@@ -29,6 +32,7 @@ from . import ipip as ipip
 from . import ipx as ipx
 from . import llc as llc
 from . import loopback as loopback
+from . import mrt as mrt
 from . import netbios as netbios
 from . import netflow as netflow
 from . import ntp as ntp
@@ -53,6 +57,7 @@ from . import sip as sip
 from . import sll as sll
 from . import sll2 as sll2
 from . import smb as smb
+from . import snoop as snoop
 from . import ssl as ssl
 from . import stp as stp
 from . import stun as stun
@@ -64,17 +69,18 @@ from . import tpkt as tpkt
 from . import udp as udp
 from . import vrrp as vrrp
 from . import yahoo as yahoo
-from .errors import Error, NeedData, PackError, UnpackError
+from .errors import Error, NeedData, NestingError, PackError, UnpackError
 from .packet import Packet as Packet
 from .packet import hexdump as hexdump
 from .packet import in_cksum as in_cksum
 from .packet import in_cksum_add as in_cksum_add
 from .packet import in_cksum_done as in_cksum_done
 
-__version__ = "0.6.2"
+__version__ = "0.7.0"
 __all__ = [
     "Error",
     "NeedData",
+    "NestingError",
     "PackError",
     "UnpackError",
     "capture",
@@ -113,6 +119,11 @@ __all__.append("qq")
 __all__.append("sccp")
 __all__.append("aim")
 __all__.extend(("ieee80211", "radiotap"))
+__all__.append("snoop")
+__all__.append("h225")
+__all__.append("asn1")
+__all__.append("bgp")
+__all__.append("mrt")
 __all__.append("rpc")
 __all__.append("dhcp")
 __all__.append("sip")

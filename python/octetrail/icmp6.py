@@ -4,7 +4,7 @@ The messages have fixed headers only, which the :class:`octetrail.Packet` base
 reads. The constants and classes are dpkt's.
 """
 
-from .errors import UnpackError
+from .errors import NestingError, UnpackError
 from .packet import Packet
 
 ICMP6_DST_UNREACH = 1  # dest unreachable, codes:
@@ -88,5 +88,9 @@ class ICMP6(Packet):
         try:
             self.data = self._typesw[self.type](self.data)
             setattr(self, self.data.__class__.__name__.lower(), self.data)
+        except NestingError:
+            raise
+        except RecursionError as error:
+            raise NestingError(*error.args) from None
         except (KeyError, UnpackError):
             pass

@@ -50,14 +50,11 @@ compressed names the way dpkt 1.9.8 does, with dpkt's classes and subclass
 hooks, except one declared difference for text that is not UTF-8. It does not
 add transport dispatch.
 The [HTTP module](http.md) parses and packs HTTP/1.x requests and responses,
-including chunked bodies, the way dpkt 1.9.8 does. Three header errors that
-dpkt raises as builtin errors are declared. No automatic application dispatch
-is added.
-The [SIP module](sip.md) parses and packs SIP requests and responses the way
-dpkt 1.9.8 does, with no declared differences.
 including chunked bodies, the way dpkt 1.9.8 does. Three header errors and
 the overflow of a Content-Length or chunk size, which dpkt raises as builtin
 errors, are declared. No automatic application dispatch is added.
+The [SIP module](sip.md) parses and packs SIP requests and responses the way
+dpkt 1.9.8 does, with no declared differences.
 The [IPv4 module](ipv4.md) parses and packs IPv4 datagrams, their options and
 checksums, and the shared protocol table the way dpkt 1.9.8 does, except one
 declared difference for an IPv6 payload.
@@ -108,6 +105,19 @@ Its `HTTP2Exception` is also an `UnpackError`.
 The [gzip module](gzip.md) parses and packs gzip headers the way dpkt 1.9.8
 does. A file name that is not UTF-8 raises an error that is both an
 `UnpackError` and dpkt's `UnicodeDecodeError`.
+The [snoop module](snoop.md) reads and writes snoop files the way dpkt 1.9.8
+does. A bad magic and an unknown link type raise errors that are also
+`UnpackError` subclasses, as well as dpkt's `ValueError` and `KeyError`.
+The [H.225.0 module](h225.md) parses and packs call signaling the way dpkt
+1.9.8 does, with no declared differences.
+The [ASN.1 module](asn1.md) decodes BER the way dpkt 1.9.8 does. Builtin
+errors dpkt raises are also `UnpackError` subclasses, and nesting and output
+size are bounded.
+The [BGP module](bgp.md) parses and packs BGP-4 messages the way dpkt 1.9.8
+does. An EVPN route cut off before an address length raises an error that is
+both an `UnpackError` and dpkt's `IndexError`.
+The [MRT module](mrt.md) parses and packs MRT routing records the way dpkt
+1.9.8 does, with the BGP module's one declared difference.
 The [NetFlow module](netflow.md) parses and packs NetFlow exports the way dpkt
 1.9.8 does, with no declared differences.
 The [Diameter module](diameter.md) parses and packs Diameter the way dpkt 1.9.8
@@ -138,6 +148,11 @@ filter execution, live capture and asynchronous I/O are outside the supported
 API. Import compatibility and distribution compatibility are separate: an
 explicit provider or test-only namespace map cannot satisfy a dpkt dependency
 pin. No unchanged application compatibility or performance claim is made.
+
+Packets whose headers nest deeper than the Python recursion limit, such as long
+chains of IPv4 in IPv4 or AH, raise [`NestingError`](nesting.md) where dpkt
+raises `RecursionError`. It is both, and it reaches the caller through every
+payload decoder, as in dpkt.
 
 Snaplen-truncated and inconsistent IPv4 datagrams parse as they do in dpkt
 1.9.8: options and payload are sliced from the bytes present. See the

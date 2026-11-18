@@ -15,3 +15,12 @@ class UnpackError(Error):
 
 class NeedData(UnpackError):
     """A header or packet payload is incomplete."""
+
+
+class NestingError(UnpackError, RecursionError):
+    """Headers nest deeper than the Python recursion limit allows to decode.
+
+    dpkt raises RecursionError here. This class is also an UnpackError, so code
+    that catches either one handles it. A payload decoder never keeps the bytes
+    of a payload that fails this way: the error reaches the caller, as in dpkt.
+    """

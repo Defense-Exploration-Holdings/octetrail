@@ -16,7 +16,7 @@ capture = importlib.import_module("octetrail.capture")
 
 assert support["dpkt_cache_keys"]() == []
 assert importlib.util.find_spec("dpkt") is not None
-assert importlib.metadata.version("octetrail") == "0.6.2"
+assert importlib.metadata.version("octetrail") == "0.7.0"
 assert importlib.metadata.version("dpkt") == "1.9.8"
 try:
     with support["mapped_capture_namespace"]():

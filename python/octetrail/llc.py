@@ -7,7 +7,7 @@ import contextlib
 import struct
 
 from . import _native, stp
-from .errors import UnpackError
+from .errors import NestingError, UnpackError
 from .packet import _LAYERS, Packet
 
 
@@ -48,6 +48,10 @@ class LLC(Packet):
             try:
                 self.data = Ethernet.get_type(self.type)(self.data)
                 setattr(self, self.data.__class__.__name__.lower(), self.data)
+            except NestingError:
+                raise
+            except RecursionError as error:
+                raise NestingError(*error.args) from None
             except (KeyError, UnpackError):
                 pass
         elif self.dsap == 0x06:

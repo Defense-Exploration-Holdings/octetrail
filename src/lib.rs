@@ -10,6 +10,7 @@ use std::fmt;
 use std::io::{self, Read};
 use std::iter::FusedIterator;
 
+pub mod asn1;
 pub mod cdp;
 pub mod dhcp;
 pub mod diameter;
@@ -17,6 +18,7 @@ pub mod dns;
 pub mod dtp;
 pub mod ethernet;
 pub mod gre;
+pub mod h225;
 pub mod http;
 pub mod http2;
 pub mod ieee80211;
