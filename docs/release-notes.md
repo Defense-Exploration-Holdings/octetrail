@@ -2,9 +2,10 @@
 
 ## Unreleased
 
-NetFlow now parses and packs the way dpkt 1.9.8 does: the new
-`octetrail.netflow` module has `Netflow1`, `Netflow5`, `Netflow6` and
-`Netflow7`, with the records split in Rust in linear time.
+Gzip now parses and packs the way dpkt 1.9.8 does: the new `octetrail.gzip`
+module has `Gzip`, `GzipExtra` and dpkt's constants. A file name that is not
+UTF-8 raises `gzip.FilenameDecodeError`, which is both an `UnpackError` and a
+`UnicodeDecodeError`.
 
 AH and ESP now parse and pack the way dpkt 1.9.8 does:
 
@@ -110,6 +111,13 @@ Telnet option stripping now works the way dpkt 1.9.8 does: the new
 `octetrail.telnet` module has `strip_options`, scanned in Rust, and dpkt's
 constants.
 
+SIP now parses and packs the way dpkt 1.9.8 does: the new `octetrail.sip`
+module has `Request` and `Response` on the HTTP classes.
+
+NetFlow now parses and packs the way dpkt 1.9.8 does: the new
+`octetrail.netflow` module has `Netflow1`, `Netflow5`, `Netflow6` and
+`Netflow7`, with the records split in Rust in linear time.
+
 Diameter now parses and packs the way dpkt 1.9.8 does: the new
 `octetrail.diameter` module has `Diameter`, `AVP` and dpkt's constants, with
 the AVPs read in Rust in linear time.
@@ -126,9 +134,6 @@ module has `FLAP`, `SNAC` and `tlv`.
 RPC now parses and packs the way dpkt 1.9.8 does: the new `octetrail.rpc`
 module has `RPC` and its call, reply and authentication classes, dpkt's
 constants and the XDR list helpers.
-
-SIP now parses and packs the way dpkt 1.9.8 does: the new `octetrail.sip`
-module has `Request` and `Response` on the HTTP classes.
 
 DHCP now parses and packs the way dpkt 1.9.8 does: the new `octetrail.dhcp`
 module has `DHCP` and dpkt's constants, with the options read in Rust. An
