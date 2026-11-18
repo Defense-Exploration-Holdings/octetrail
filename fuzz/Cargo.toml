@@ -57,6 +57,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "ieee80211"
+path = "fuzz_targets/ieee80211.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "tls"
 path = "fuzz_targets/tls.rs"
 test = false
