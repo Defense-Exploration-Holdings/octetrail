@@ -101,6 +101,8 @@ The [OSPF and SCTP modules](ospf-sctp.md) parse and pack those packets the way
 dpkt 1.9.8 does, with no declared differences.
 The [ARP module](arp.md) parses and packs ARP the way dpkt 1.9.8 does, with no
 declared differences.
+The [AIM module](aim.md) parses and packs OSCAR frames the way dpkt 1.9.8
+does, with no declared differences.
 The [IEEE 802.11 and radiotap modules](ieee80211-radiotap.md) parse and pack
 frames the way dpkt 1.9.8 does. Radiotap present words cut off by the buffer
 raise an error that is both an `UnpackError` and dpkt's `IndexError`.

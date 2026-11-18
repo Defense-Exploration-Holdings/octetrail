@@ -1,6 +1,7 @@
 """A dpkt rewrite with native offline capture and bounded packet composition."""
 
 from . import ah as ah
+from . import aim as aim
 from . import aoe as aoe
 from . import aoeata as aoeata
 from . import aoecfg as aoecfg
@@ -98,6 +99,7 @@ __all__.extend(("ah", "esp"))
 __all__.extend(("crc32c", "ospf", "sctp"))
 __all__.extend(("gre", "pim"))
 __all__.append("arp")
+__all__.append("aim")
 __all__.extend(("ieee80211", "radiotap"))
 __all__.append("rpc")
 __all__.append("dhcp")

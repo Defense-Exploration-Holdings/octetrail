@@ -76,6 +76,8 @@ The OSPF, SCTP and CRC-32C modules adapt dpkt's ospf.py, sctp.py and crc32c.py
 under the same retained upstream BSD license.
 The ARP module adapts dpkt's arp.py, including its constants, under the same
 retained upstream BSD license.
+The AIM module adapts dpkt's aim.py under the same retained upstream BSD
+license.
 The IEEE 802.11 and radiotap modules adapt dpkt's ieee80211.py and radiotap.py,
 including their constants, under the same retained upstream BSD license. Their
 Rust element and present word readers are original work.
