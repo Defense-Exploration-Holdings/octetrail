@@ -34,6 +34,7 @@ from . import pim as pim
 from . import pmap as pmap
 from . import ppp as ppp
 from . import pppoe as pppoe
+from . import qq as qq
 from . import radiotap as radiotap
 from . import radius as radius
 from . import raw as raw
@@ -100,6 +101,7 @@ __all__.extend(("ah", "esp"))
 __all__.extend(("crc32c", "ospf", "sctp"))
 __all__.extend(("gre", "pim"))
 __all__.append("arp")
+__all__.append("qq")
 __all__.append("sccp")
 __all__.append("aim")
 __all__.extend(("ieee80211", "radiotap"))

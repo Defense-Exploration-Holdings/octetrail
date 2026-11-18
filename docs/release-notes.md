@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-SCCP now parses and packs the way dpkt 1.9.8 does: the new `octetrail.sccp`
-module has `SCCP`, dpkt's message classes and its message id constants.
+QQ now parses and packs the way dpkt 1.9.8 does: the new `octetrail.qq` module
+has `QQBasicPacket`, `QQ3Packet`, `QQ5Packet` and dpkt's constants.
 
 AH and ESP now parse and pack the way dpkt 1.9.8 does:
 
@@ -20,9 +20,17 @@ OSPF and SCTP now parse and pack the way dpkt 1.9.8 does:
   and SCTP checksums are computed when packing.
 - IPv4 and IPv6 decode protocol 89 as OSPF and 132 as SCTP.
 
-Telnet option stripping now works the way dpkt 1.9.8 does: the new
-`octetrail.telnet` module has `strip_options`, scanned in Rust, and dpkt's
-constants.
+HTTP now follows dpkt 1.9.8's classes and errors:
+
+- API: `Message`, `Request` and `Response` are `Packet` subclasses with dpkt's
+  `repr()`. A subclass can set `__methods` and `__proto` under the class name
+  `Request` or `Response`, as dpkt's SIP module does.
+- Errors: a short body and an invalid header raise dpkt's messages. A
+  Content-Length that is not an integer, a repeated Content-Length and a
+  repeated Transfer-Encoding raise `http.HeaderValueError`,
+  `http.HeaderTypeError` and `http.HeaderAttributeError`. A Content-Length or
+  chunk size outside `Py_ssize_t` raises `http.LengthOverflowError`. Each is
+  both an `UnpackError` and the builtin error dpkt raises, with dpkt's message.
 
 ATA over Ethernet now parses and packs the way dpkt 1.9.8 does: the new
 `octetrail.aoe`, `octetrail.aoeata` and `octetrail.aoecfg` modules have dpkt's
@@ -97,17 +105,12 @@ Portmap, Rx, TNS, Yahoo Messenger, SMB and RFB now parse and pack the way dpkt
 `octetrail.yahoo`, `octetrail.smb` and `octetrail.rfb` modules have dpkt's
 classes and constants.
 
-HTTP now follows dpkt 1.9.8's classes and errors:
+Telnet option stripping now works the way dpkt 1.9.8 does: the new
+`octetrail.telnet` module has `strip_options`, scanned in Rust, and dpkt's
+constants.
 
-- API: `Message`, `Request` and `Response` are `Packet` subclasses with dpkt's
-  `repr()`. A subclass can set `__methods` and `__proto` under the class name
-  `Request` or `Response`, as dpkt's SIP module does.
-- Errors: a short body and an invalid header raise dpkt's messages. A
-  Content-Length that is not an integer, a repeated Content-Length and a
-  repeated Transfer-Encoding raise `http.HeaderValueError`,
-  `http.HeaderTypeError` and `http.HeaderAttributeError`. A Content-Length or
-  chunk size outside `Py_ssize_t` raises `http.LengthOverflowError`. Each is
-  both an `UnpackError` and the builtin error dpkt raises, with dpkt's message.
+SCCP now parses and packs the way dpkt 1.9.8 does: the new `octetrail.sccp`
+module has `SCCP`, dpkt's message classes and its message id constants.
 
 AIM now parses and packs the way dpkt 1.9.8 does: the new `octetrail.aim`
 module has `FLAP`, `SNAC` and `tlv`.
