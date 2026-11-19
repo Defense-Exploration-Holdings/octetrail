@@ -10,7 +10,7 @@ from octetrail import ethernet, ip6, raw, udp
 child = udp.UDP(sport=32000, dport=32001, ulen=12, data=b"note")
 packet = ip6.IP6(src=bytes.fromhex("20010db8000000000000000000000001"),
                  dst=bytes.fromhex("20010db8000000000000000000000002"),
-                 nxt=17, plen=len(child), hlim=32, data=child)
+                 nxt=17, hlim=32, data=child)
 wire = bytes(packet)
 assert raw.decode(wire).udp.data == b"note"
 frame = ethernet.Ethernet(data=packet)
@@ -40,9 +40,13 @@ The version is not checked.
    | `IP6AHHeader` | `(len + 2) * 4` | `auth_data` |
    | `IP6ESPHeader` | everything left | none, and no `nxt` |
 
-   Each header has `length` and `data` too. As in dpkt, options are read past
-   the declared length when an option says so, an AH header's `data` is
+   Each header has `length` and `data` too. An option that runs past its
+   header's declared length raises `UnpackError`; dpkt reads on into the next
+   header. A capture cut short inside an option keeps the bytes present. An AH
+   header's `data` is
    everything after its fixed fields, and ESP ends the chain without setting `p`.
+   An AH `len` of 0 gives an empty `auth_data`; dpkt's slice drops the last
+   four bytes of the buffer instead.
 3. When `nxt` is 44 and the last extension header has a nonzero `frag_off`,
    `data` is the rest as bytes. If that last header is not a fragment header,
    dpkt raises `AttributeError`. OctetRail raises `FragmentOffsetError`, which
@@ -50,8 +54,7 @@ The version is not checked.
    payload as bytes.
 4. Otherwise the rest is decoded with `IP6.get_proto(p)`. TCP, UDP, IPv4, IPv6,
    ICMP, ICMPv6, IGMP, OSPF, SCTP, VRRP, GRE and PIM are decoded, and the
-   attribute named after the class, such as `.tcp`, `.icmp6` or `.gre`, is set. As in dpkt, protocol 118 decodes as the Spanning Tree `STP`
-   class. Other protocols, and payloads that raise `UnpackError`, stay bytes. `IP6.set_proto` adds a
+   attribute named after the class, such as `.tcp`, `.icmp6` or `.gre`, is set. Other protocols, and payloads that raise `UnpackError`, stay bytes. `IP6.set_proto` adds a
    class. The table is shared with `IP`, as in dpkt. A UDP payload larger than 65535 bytes, possible when `plen` is 0, is
    decoded as UDP and packs back as it is.
 
@@ -85,7 +88,9 @@ time.
   of 0 is not changed to `0xffff`, as in dpkt. A nonzero `sum` is kept. The
   pseudo-header carries a 32-bit length, so a jumbo payload over 65535 bytes
   gets a checksum too, where dpkt raises `struct.error`.
-- `plen` is packed as it is. It is not computed.
+- On a packet built from fields, a `plen` of 0 is set to the length of the
+  extension headers and payload, unless that exceeds 65535. A parsed packet
+  keeps its `plen`, so it packs back to the same bytes.
 
 `len()` is 40 plus the extension headers and `len(data)`.
 

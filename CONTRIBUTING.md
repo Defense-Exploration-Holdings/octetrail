@@ -20,8 +20,10 @@ OctetRail deliberately differs, the difference has to be documented in `docs/`.
 
 ## Code
 
-- Parsing lives in Rust under `src/`, Python bindings under `bindings/python/`, and
-  the dpkt-style Python classes under `python/octetrail/`.
+- The packet classes are Python, under `python/octetrail/`. Capture file I/O and
+  loops over untrusted lengths (lists of options, records, names or elements)
+  belong in Rust under `src/`, called through `bindings/python/`. Fixed-size
+  headers can stay pure Python.
 - The Rust code forbids `unsafe`. Keep parsers bounded: no allocation sized by an
   unchecked length field, and no recursion without a limit.
 - New dependencies need a reason in the pull request. Python tool requirements are
@@ -38,6 +40,7 @@ Linux, macOS and Windows.
 cargo fmt --check
 cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo test --locked --workspace
+cargo test --locked
 python -m ruff check python tools tests/python
 python -m ruff format --check python tools tests/python
 ```

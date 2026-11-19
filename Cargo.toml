@@ -1,11 +1,15 @@
 [package]
 name = "octetrail"
-version = "0.7.2"
+version = "1.0.0"
 edition = "2021"
 rust-version = "1.85"
-description = "Bounded offline capture I/O, an early dpkt rewrite"
+description = "Fast packet parsing and pcap I/O for Python, written in Rust"
 license = "BSD-3-Clause"
 publish = false
+
+[features]
+# Protocol parsers used by the Python bindings. Not a stable API.
+protocols = []
 
 [workspace]
 members = ["bindings/python"]

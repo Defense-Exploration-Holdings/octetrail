@@ -159,41 +159,23 @@ pub enum Int {
     Overflow,
 }
 
-/// `int(text, radix)` for radix 10 or 16, including signs, a `0x` prefix in
-/// radix 16, single underscores between digits and surrounding whitespace.
-pub fn python_int(text: &str, radix: u32) -> Option<Int> {
-    let mut s = text.trim_matches(|c: char| c.is_ascii() && bytes_space(c as u8));
-    let negative = s.starts_with('-');
-    if negative || s.starts_with('+') {
-        s = &s[1..];
-    }
-    let mut prefixed = false;
-    if radix == 16 && (s.starts_with("0x") || s.starts_with("0X")) {
-        s = &s[2..];
-        prefixed = true;
-    }
-    if prefixed && s.starts_with('_') {
-        s = &s[1..];
-    }
-    if s.is_empty() || s.starts_with('_') || s.ends_with('_') || s.contains("__") {
+/// A Content-Length (radix 10) or chunk size (radix 16): ASCII digits only,
+/// with surrounding whitespace allowed. Signs, `0x` prefixes and underscores,
+/// which Python's `int()` and so dpkt accept, are rejected.
+pub fn parse_size(text: &str, radix: u32) -> Option<Int> {
+    let s = text.trim_matches(|c: char| c.is_ascii() && bytes_space(c as u8));
+    if s.is_empty() {
         return None;
     }
     let mut value = 0u128;
-    for c in s.chars().filter(|c| *c != '_') {
+    for c in s.chars() {
         let digit = c.to_digit(radix)?;
         value = value
             .saturating_mul(u128::from(radix))
             .saturating_add(u128::from(digit));
     }
-    let limit = if negative {
-        i64::MIN.unsigned_abs()
-    } else {
-        i64::MAX.unsigned_abs()
-    };
-    Some(if value > u128::from(limit) {
+    Some(if value > u128::from(i64::MAX.unsigned_abs()) {
         Int::Overflow
-    } else if negative && value != 0 {
-        Int::Negative
     } else {
         Int::Value(usize::try_from(value).unwrap_or(usize::MAX))
     })
@@ -282,7 +264,7 @@ pub fn body_mode(headers: &Headers) -> Result<BodyMode, Error> {
         if values.len() > 1 {
             return Err(Error::Invalid("duplicate Content-Length headers"));
         }
-        let n = python_int(&values[0], 10).ok_or(Error::Invalid("invalid Content-Length"))?;
+        let n = parse_size(&values[0], 10).ok_or(Error::Invalid("invalid Content-Length"))?;
         return Ok(BodyMode::Length(n));
     }
     Ok(if get("content-type").is_some() {
@@ -313,9 +295,11 @@ fn read_body<'a>(reader: &mut Reader<'a>, mode: BodyMode) -> Result<Cow<'a, [u8]
                     .split(|b| bytes_space(*b))
                     .find(|t| !t.is_empty())
                     .ok_or_else(|| Error::Unpack("missing chunk size".into()))?;
+                // A chunk extension (`;name=value`) after the size is ignored.
+                let size = size.split(|b| *b == b';').next().unwrap_or(size);
                 let n = std::str::from_utf8(size)
                     .ok()
-                    .and_then(|s| python_int(s, 16))
+                    .and_then(|s| parse_size(s, 16))
                     .ok_or_else(|| Error::Unpack("invalid chunk size".into()))?;
                 if n == Int::Value(0) {
                     found_end = true;
@@ -514,32 +498,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn python_int_rules() {
-        let v = |s, r| python_int(s, r);
+    fn size_rules() {
+        let v = |s, r| parse_size(s, r);
         assert_eq!(v(" 12\t\x0b\x0c", 10), Some(Int::Value(12)));
-        for c in '\x1c'..='\x1f' {
-            let (tail, lead) = (format!("12{c}"), format!("{c}4"));
-            assert_eq!(python_int(&tail, 10), None);
-            assert_eq!(python_int(&lead, 16), None);
+        assert_eq!(v("1f", 16), Some(Int::Value(31)));
+        assert_eq!(v("1F", 16), Some(Int::Value(31)));
+        for bad in [
+            "", " ", "+10", "-0", "-3", "1_0", "0x1f", "1f", "1 0", "\u{661}",
+        ] {
+            assert_eq!(v(bad, 10), None, "{bad:?}");
         }
-        assert_eq!(v("+1_0", 10), Some(Int::Value(10)));
-        assert_eq!(v("-0", 10), Some(Int::Value(0)));
-        assert_eq!(v("-3", 10), Some(Int::Negative));
-        assert_eq!(v("0x_1f", 16), Some(Int::Value(31)));
-        assert_eq!(v("1__0", 10), None);
-        assert_eq!(v("1_", 10), None);
-        assert_eq!(v("_1", 10), None);
-        assert_eq!(v("0x", 16), None);
-        assert_eq!(v("0x1", 10), None);
+        for bad in ["0x1f", "+1", "1_f", "-1"] {
+            assert_eq!(v(bad, 16), None, "{bad:?}");
+        }
         assert_eq!(v("99999999999999999999999", 10), Some(Int::Overflow));
         assert_eq!(
             v("9223372036854775807", 10),
             Some(Int::Value(i64::MAX as usize))
         );
         assert_eq!(v("9223372036854775808", 10), Some(Int::Overflow));
-        assert_eq!(v("-9223372036854775808", 10), Some(Int::Negative));
-        assert_eq!(v("-9223372036854775809", 10), Some(Int::Overflow));
-        assert_eq!(v("8000000000000000", 16), Some(Int::Overflow));
     }
 
     #[test]

@@ -21,7 +21,7 @@ It does not claim full import, object or package parity. The published dpkt
 | PCAPNG Writer, raw bytes with default clock | Available | Measured seconds-method subset |
 | PCAPNG custom metadata and exact timestamp ticks | Block-based APIs | Primitive options plus explicit ticks; byte comparisons only |
 | PCAPNG Writer block arguments and multiple interfaces | Available | Not implemented |
-| UniversalReader | 1.9.8 only; absent in 1.9.6 | Measured ordinary PCAP/EPB subset; strict differences retained |
+| UniversalReader | 1.9.8 only; absent in 1.9.6 | Picks the reader by magic bytes; no seek |
 | Selected magic, block, version and DLT constants | Sixteen common exports | Compared through the offline consumer |
 | Full magic, block, option and DLT constant exports | Available, version-dependent | Remaining inventory not implemented |
 | Public offset dictionaries and private bookkeeping attributes | Available | Only covered metadata behavior, not object parity |
@@ -44,7 +44,7 @@ strict validation. The [PCAPNG writer](pcapng-writer.md) emits one unknown-lengt
 section, one interface and EPBs. Primitive options and exact ticks are additions;
 they do not implement upstream block classes. The [explicit provider
 guide](capture-compatibility.md) explains import selection, and the
-[UniversalReader guide](universal-reader.md) describes the 1.9.8-only factory.
+[UniversalReader guide](universal-reader.md) describes the factory.
 
 Keep two separate gates: an isolated wheel can be installed and verified under
 the `octetrail` namespace, while unchanged downstream source still requires its

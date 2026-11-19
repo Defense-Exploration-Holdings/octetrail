@@ -57,7 +57,7 @@ class PacketTests(unittest.TestCase):
         self.assertEqual(dict(foo), {"foo": 1, "bar": 3, "baz": b"quux"})
         parsed = Foo(b"hello, world!", bar=9)
         self.assertEqual(repr(parsed), "Foo(foo=1751477356, bar=28460, baz=b' wor', data=b'ld!')")
-        self.assertEqual(str(Foo(data=b"x")), str(bytes(Foo(data=b"x"))))
+        self.assertEqual(str(Foo(data=b"x")), repr(Foo(data=b"x")))
         self.assertEqual(Foo(data=Foo()).pack(), bytes(Foo()) * 2)
 
     def test_errors(self):

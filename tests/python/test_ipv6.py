@@ -185,8 +185,13 @@ class IPv6Tests(unittest.TestCase):
         wire = bytes(packet)
         self.assertEqual(packet.p, 17)
         self.assertNotEqual(packet.data.sum, 0)
-        self.assertEqual(wire[:6], b"\x60\0\0\0\0\0")
+        # A packet built from fields gets its payload length on pack.
+        self.assertEqual(wire[:6], b"\x60\0\0\0" + struct.pack(">H", len(F.UDP)))
         self.assertEqual(len(packet), 40 + len(F.UDP))
+        given = ip6.IP6(src=F.SRC, dst=F.DST, nxt=17, plen=99, data=udp.UDP(F.UDP))
+        self.assertEqual(bytes(given)[4:6], b"\0\x63")
+        # A parsed packet with a zero length packs back to the same bytes.
+        self.assertEqual(bytes(ip6.IP6(F.base(17, F.UDP, plen=0)))[4:6], b"\0\0")
         pseudo = struct.pack(">16s16sxBH", F.SRC, F.DST, 17, len(F.UDP))
         total = sum(
             struct.unpack(">%dH" % ((len(pseudo) + len(wire[40:])) // 2), pseudo + wire[40:])

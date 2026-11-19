@@ -1,7 +1,7 @@
 """Dynamic Trunking Protocol, as dpkt 1.9.8 reads it.
 
-The entry list is read in Rust. As in dpkt, ``data`` holds the entries as
-``(type, value)`` pairs, and packing writes only the entries, not the version.
+The entry list is read in Rust. ``data`` holds the entries as ``(type, value)``
+pairs.
 """
 
 import struct
@@ -34,5 +34,9 @@ class DTP(Packet):
             raise struct.error("unpack requires a buffer of 4 bytes") from None
         self.data = [(t, buf[s:e]) for t, s, e in rows]
 
+    def __len__(self):
+        return self.__hdr_len__ + sum(4 + len(v) for _, v in self.data)
+
     def __bytes__(self):
-        return b"".join([struct.pack(">HH", t, len(v)) + v for t, v in self.data])
+        entries = b"".join([struct.pack(">HH", t, len(v)) + v for t, v in self.data])
+        return self.pack_hdr() + entries

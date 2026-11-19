@@ -17,6 +17,10 @@ pub enum Error {
     Short(usize, usize),
     /// An option type or length byte is past the end of the buffer.
     Options,
+    /// An option runs past the header's declared length.
+    OptionLength,
+    /// The protocol number is not an IPv6 extension header.
+    NotExtension(u8),
 }
 
 impl fmt::Display for Error {
@@ -24,6 +28,8 @@ impl fmt::Display for Error {
         match self {
             Self::Short(have, need) => write!(f, "got {have}, {need} needed at least"),
             Self::Options => write!(f, "IPv6 option runs past the end"),
+            Self::OptionLength => write!(f, "IPv6 option runs past the header length"),
+            Self::NotExtension(kind) => write!(f, "{kind} is not an IPv6 extension header"),
         }
     }
 }
@@ -134,29 +140,36 @@ fn fixed(buf: &[u8], widths: &[usize]) -> Result<Vec<u32>, Error> {
 }
 
 fn options(buf: &[u8], length: usize) -> Result<Vec<Opt>, Error> {
-    // dpkt reads options from everything after the two fixed bytes, not only
-    // from the declared length.
-    let data = &buf[2..];
-    let byte = |i: usize| data.get(i).copied().ok_or(Error::Options);
+    // Options fill the declared header after its two fixed bytes. An option that
+    // runs past the declared length is an error; dpkt reads on into the payload.
+    // A capture cut short inside the header keeps the options that are there.
+    let area = length - 2;
+    let data = &buf[2..length.min(buf.len())];
     let mut found = Vec::new();
     let mut index = 0;
-    while index + 2 < length {
-        let kind = byte(index)?;
+    while index < data.len() {
+        let kind = data[index];
         if kind == 0 {
             index += 1;
             continue;
         }
-        let size = byte(index + 1)?;
-        let start = (index + 2).min(data.len());
-        let end = (index + 2 + usize::from(size)).min(data.len());
+        let size = *data.get(index + 1).ok_or(Error::Options)?;
+        let end = index + 2 + usize::from(size);
+        if end > area {
+            return Err(Error::OptionLength);
+        }
         if kind != 1 {
             found.push(Opt {
                 kind,
                 length: size,
-                data: (2 + start, 2 + end),
+                data: (2 + index + 2, 2 + end.min(data.len())),
             });
         }
-        index += usize::from(size) + 2;
+        index = end;
+    }
+    if index < area && data.len() < area {
+        // The capture ends inside the option list.
+        return Err(Error::Options);
     }
     Ok(found)
 }
@@ -204,11 +217,10 @@ impl Extension {
             51 => {
                 let fields = fixed(buf, &[1, 1, 2, 4, 4])?;
                 let rest = n - 12;
-                // dpkt slices data[:(len - 1) * 4], so a zero length drops the last four bytes.
-                let auth = match fields[1] as usize {
-                    0 => rest.saturating_sub(4),
-                    len => ((len - 1) * 4).min(rest),
-                };
+                // The ICV is (len - 1) * 4 bytes. dpkt's slice turns a zero length into
+                // "all but the last four bytes"; here it is empty, as in the IPv4 AH class.
+                let auth = (fields[1] as usize).saturating_sub(1) * 4;
+                let auth = auth.min(rest);
                 Self {
                     kind,
                     length: (fields[1] as usize + 2) * 4,
@@ -224,7 +236,7 @@ impl Extension {
                 length: n,
                 body: Body::Esp,
             },
-            _ => panic!("{kind} is not an IPv6 extension header"),
+            _ => return Err(Error::NotExtension(kind)),
         })
     }
 
@@ -329,9 +341,20 @@ mod tests {
     }
 
     #[test]
-    fn options_read_past_the_declared_length() {
-        // len 0 means 8 bytes; the option at index 4 has data beyond them.
-        let buf = [59, 0, 1, 0, 0, 0, 5, 9, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+    fn unknown_extension_kind_is_an_error() {
+        let buf = [0u8; 16];
+        for kind in (0..=u8::MAX).filter(|k| !EXTENSIONS.contains(k)) {
+            assert_eq!(
+                Extension::parse(kind, &buf).unwrap_err(),
+                Error::NotExtension(kind)
+            );
+        }
+    }
+
+    #[test]
+    fn options_stay_inside_the_declared_length() {
+        // len 0 means 8 bytes: PadN of 2, then an option of 2 bytes of data.
+        let buf = [59, 0, 1, 0, 5, 2, 7, 8, 99, 99];
         let ext = Extension::parse(0, &buf).unwrap();
         assert_eq!(ext.data, (2, 8));
         let Body::Options(found) = ext.body else {
@@ -341,10 +364,25 @@ mod tests {
             found,
             [Opt {
                 kind: 5,
-                length: 9,
-                data: (8, 17)
+                length: 2,
+                data: (6, 8)
             }]
         );
+        // An option whose data runs past byte 8 is an error, even with bytes after it.
+        let past = [59, 0, 1, 0, 0, 0, 5, 9, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        assert_eq!(Extension::parse(0, &past), Err(Error::OptionLength));
         assert_eq!(Extension::parse(0, &[59, 0, 7]), Err(Error::Options));
+        // Cut short inside an option's data: the option keeps the bytes present.
+        let Body::Options(cut) = Extension::parse(0, &[59, 0, 5, 4, 1]).unwrap().body else {
+            panic!()
+        };
+        assert_eq!(
+            cut,
+            [Opt {
+                kind: 5,
+                length: 4,
+                data: (4, 5)
+            }]
+        );
     }
 }

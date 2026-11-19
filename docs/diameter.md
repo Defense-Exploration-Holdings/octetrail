@@ -7,8 +7,8 @@ the AVP walk is read in Rust. The module has dpkt's command code constants.
 ```python
 from octetrail import diameter
 
-avp = diameter.AVP(code=264, flags=0x40, len=12, data=b"h002")
-message = diameter.Diameter(len=32, cmd=280, flags=0x80, data=[avp])
+avp = diameter.AVP(code=264, flags=0x40, data=b"h002")
+message = diameter.Diameter(cmd=280, flags=0x80, data=[avp])
 parsed = diameter.Diameter(bytes(message))
 assert parsed.request_flag == 1
 assert parsed.avps[0].data == b"h002"
@@ -43,8 +43,10 @@ linear time.
 
 ## Packing
 
-`bytes()` packs the header and each AVP in `data`. `len` is packed as it is.
-It is not computed. `len()` counts the header and the AVPs.
+`bytes()` packs the header and each AVP in `data`. On a message or AVP built
+from fields, a `len` of 0 is set to its `len()`. A parsed one keeps its `len`.
+`len` and `cmd` stay numbers after packing, so an object can be packed again.
+`len()` counts the header and the AVPs.
 
 ## Errors
 

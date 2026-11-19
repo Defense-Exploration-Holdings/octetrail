@@ -63,7 +63,7 @@ class PppTests(unittest.TestCase):
             self.assertIsInstance(packet.data, bytes)
             # As in dpkt, packing writes the protocol in one byte when it fits.
             self.assertEqual(bytes(packet), b"\xff\x03\x57" + CASES[name][-len(packet.data) :])
-            with self.assertRaises(ip6.FragmentOffsetError):
+            with self.assertRaises(octetrail.UnpackError):
                 ip6.IP6(packet.data)
         self.assertIsInstance(ppp.PPP(CASES["ppp_ip_fragment_after_hop"]).ip.data, bytes)
         self.assertIsInstance(pppoe.PPPoE(CASES["pppoe_fragment_after_hop"]).ppp.data, bytes)

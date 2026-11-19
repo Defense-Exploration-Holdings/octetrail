@@ -1,3 +1,4 @@
+#![cfg(feature = "protocols")]
 use octetrail::dns::{encode, unpack_name, Entry, Error, Message, Question, Rdata};
 
 fn question() -> Vec<u8> {

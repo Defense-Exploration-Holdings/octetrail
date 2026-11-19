@@ -19,7 +19,8 @@ assert parsed.filename == "hello.txt"
 parsing, `extra` is a `GzipExtra` with `id` and `len`, `filename` is a `str`,
 `comment` is bytes, and each is `None` when its flag is not set. `data` holds
 the bytes after the optional fields, which is the compressed stream and its
-trailer. Neither the magic nor the method is checked, as in dpkt.
+trailer. A magic other than `1f 8b` or a method other than deflate (8) raises
+`UnpackError`; dpkt checks neither.
 
 The encryption header and the header CRC are skipped when their flags are set,
 and are not kept.
@@ -31,9 +32,9 @@ are set, and sets their flags. The encryption header and the header CRC are
 not packed back, as in dpkt.
 
 `compress()` replaces `data` with a raw deflate stream and `decompress()`
-returns the inflated payload. As in dpkt, `compress()` keeps only the output of
-the final flush, and `decompress()` has no size limit, so call it only on
-trusted data.
+returns the inflated payload. `decompress()` has no size limit, so call it only
+on trusted data. dpkt's `compress()` keeps only the output of the final flush,
+which loses data for payloads larger than the compressor's buffer.
 
 ## Errors
 

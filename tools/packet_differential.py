@@ -206,6 +206,13 @@ def provenance(module, version):
     return package, base
 
 
+# OctetRail fixes dpkt here (str() of a packet is its repr). These keys are not compared;
+# tests/python checks the fixed results.
+FIXED = {
+    "changed",
+}
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--probe", action="store_true")
@@ -241,7 +248,7 @@ def main():
         reports.append(json.loads(r.stdout))
     reference = reports[1]
     for (_, module, v), report in zip(providers[2:], reports[2:], strict=True):
-        wrong = sorted(k for k in reference if report.get(k) != reference[k])
+        wrong = sorted(k for k in reference if k not in FIXED and report.get(k) != reference[k])
         C.require(not wrong, "Packet mismatch " + module + v + ": " + ", ".join(wrong))
     print(
         json.dumps(

@@ -86,10 +86,10 @@ class HttpTests(unittest.TestCase):
         head = b"POST / HTTP/1.1\r\n"
         cases = {
             b"Content-Length: 2\r\n\r\nokTAIL": (b"ok", b"TAIL"),
-            b"Content-Length: +0_2\r\n\r\nok": (b"ok", b""),
+            b"Content-Length:  2 \r\n\r\nok": (b"ok", b""),
             b"Content-Type: x\r\n\r\nall of it": (b"all of it", b""),
             b"X: 1\r\n\r\nunframed": (b"", b"unframed"),
-            b"Transfer-Encoding: Chunked\r\n\r\n2 ext\r\nab\r\n0x1\r\nc\r\n0\r\nnext": (
+            b"Transfer-Encoding: Chunked\r\n\r\n2 ext\r\nab\r\n1;a=b\r\nc\r\n0\r\nnext": (
                 b"abc",
                 b"",
             ),
@@ -99,7 +99,6 @@ class HttpTests(unittest.TestCase):
             self.assertEqual((r.body, r.data), (body, data), raw)
         for raw in (
             b"Content-Length: 3\r\n\r\nno",
-            b"Content-Length: -1\r\n\r\n",
             b"Transfer-Encoding: chunked\r\n\r\n3\r\nabcd\r\n0\r\n\r\n",
             b"Transfer-Encoding: chunked\r\n\r\n9\r\nabc",
         ):
@@ -110,6 +109,13 @@ class HttpTests(unittest.TestCase):
             b"Transfer-Encoding: chunked\r\n\r\n3\r\nabc\r\n",
             b"Transfer-Encoding: chunked\r\n\r\nzz\r\n",
             b"Content-Length: two\r\n\r\n",
+            b"Content-Length: -1\r\n\r\n",
+            b"Content-Length: +2\r\n\r\nok",
+            b"Content-Length: 1_0\r\n\r\n0123456789",
+            b"Content-Length: \xd9\xa1\r\n\r\nx",
+            b"Transfer-Encoding: chunked\r\n\r\n0x1\r\nc\r\n0\r\n\r\n",
+            b"Transfer-Encoding: chunked\r\n\r\n+1\r\nc\r\n0\r\n\r\n",
+            b"Transfer-Encoding: chunked\r\n\r\n1_0\r\n0123456789abcdef\r\n0\r\n\r\n",
             b"Content-Length: 1\r\nContent-Length: 1\r\n\r\nx",
             b"Transfer-Encoding: a\r\nTransfer-Encoding: b\r\n\r\n",
         ):
@@ -123,7 +129,7 @@ class HttpTests(unittest.TestCase):
                 b"Content-Length: two\r\n\r\n",
                 http.HeaderValueError,
                 ValueError,
-                "invalid literal for int() with base 10: 'two'",
+                "invalid Content-Length: 'two'",
             ),
             (
                 b"Content-Length: 1\r\nContent-Length: 1\r\n\r\nx",
@@ -150,9 +156,7 @@ class HttpTests(unittest.TestCase):
         chunked = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
         for build, raw in (
             (http.Request, b"GET / HTTP/1.1\r\nContent-Length: 9223372036854775808\r\n\r\n"),
-            (http.Request, b"GET / HTTP/1.1\r\nContent-Length: -9223372036854775809\r\n\r\n"),
             (http.Response, chunked + b"8000000000000000\r\nab\r\n0\r\n\r\n"),
-            (http.Response, chunked + b"-8000000000000001\r\nab\r\n0\r\n\r\n"),
         ):
             with self.assertRaises(http.LengthOverflowError) as caught:
                 build(raw)
@@ -170,7 +174,7 @@ class HttpTests(unittest.TestCase):
         head = b"POST / HTTP/1.1\r\n"
         for raw, message in (
             (b"Content-Length: 3\r\n\r\nno", "short body (missing 1 bytes)"),
-            (b"Content-Length: -2\r\n\r\nab", "short body (missing -4 bytes)"),
+            (b"Content-Length: -2\r\n\r\nab", "invalid Content-Length: '-2'"),
             (b"bad name: it's\x01\\\r\n\r\n", 'invalid header: "bad name: it\'s\\x01\\\\"'),
             (b"a b: x\r\n\r\n", "invalid header: 'a b: x'"),
         ):

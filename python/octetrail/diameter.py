@@ -22,6 +22,20 @@ RE_AUTH = 258
 SESSION_TERMINATION = 275
 
 
+def _pack_with_u24(pkt, names):
+    # The 24-bit fields are ints on the object and "3s" in the header format.
+    # They are swapped for their bytes only while packing, so the object keeps
+    # its ints and can be packed again.
+    saved = {n: getattr(pkt, n) for n in names}
+    try:
+        for n, v in saved.items():
+            setattr(pkt, n, v.to_bytes(3, "big") if isinstance(v, int) else v)
+        return Packet.pack_hdr(pkt)
+    finally:
+        for n, v in saved.items():
+            setattr(pkt, n, v)
+
+
 class Diameter(Packet):
     """Diameter.
 
@@ -102,14 +116,16 @@ class Diameter(Packet):
             AVP(self.data[fails_at:])
         self.data = self.avps = l_
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # A message built from fields gets a zero len filled in on pack. A
+        # parsed message packs back to its own bytes.
+        self._fill_on_pack = not args
+
     def pack_hdr(self):
-        self.len = struct.pack(
-            "BBB", (self.len >> 16) & 0xFF, (self.len >> 8) & 0xFF, self.len & 0xFF
-        )
-        self.cmd = struct.pack(
-            "BBB", (self.cmd >> 16) & 0xFF, (self.cmd >> 8) & 0xFF, self.cmd & 0xFF
-        )
-        return Packet.pack_hdr(self)
+        if self.len == 0 and self._fill_on_pack:
+            self.len = len(self)
+        return _pack_with_u24(self, ("len", "cmd"))
 
     def __len__(self):
         return self.__hdr_len__ + sum(map(len, self.data))
@@ -159,11 +175,16 @@ class AVP(Packet):
         else:
             self.data = self.data[: self.len - self.__hdr_len__]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # A message built from fields gets a zero len filled in on pack. A
+        # parsed message packs back to its own bytes.
+        self._fill_on_pack = not args
+
     def pack_hdr(self):
-        self.len = struct.pack(
-            "BBB", (self.len >> 16) & 0xFF, (self.len >> 8) & 0xFF, self.len & 0xFF
-        )
-        data = Packet.pack_hdr(self)
+        if self.len == 0 and self._fill_on_pack:
+            self.len = len(self)
+        data = _pack_with_u24(self, ("len",))
         if self.vendor_flag:
             data += struct.pack(">I", self.vendor)
         return data

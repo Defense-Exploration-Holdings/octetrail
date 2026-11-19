@@ -45,7 +45,7 @@ def parse_headers(f):
 
 
 class HeaderValueError(UnpackError, ValueError):
-    """A Content-Length that int() rejects; dpkt raises ValueError."""
+    """A Content-Length that is not a plain decimal number."""
 
 
 class HeaderTypeError(UnpackError, TypeError):
@@ -72,12 +72,14 @@ def parse_body(f, headers):
         f.seek(start + used)
         return body
     if "content-length" in headers:
-        try:
-            n = int(headers["content-length"])
-        except ValueError as error:
-            raise HeaderValueError(*error.args) from None
-        except TypeError as error:
-            raise HeaderTypeError(*error.args) from None
+        value = headers["content-length"]
+        if not isinstance(value, str):
+            raise HeaderTypeError("duplicate Content-Length headers")
+        text = value.strip(" \t\r\n\x0b\x0c")
+        # Digits only: int() would also accept signs, underscores and non-ASCII digits.
+        if not (text.isascii() and text.isdigit()):
+            raise HeaderValueError("invalid Content-Length: %r" % value)
+        n = int(text)
         try:
             body = f.read(n)
         except OverflowError as error:

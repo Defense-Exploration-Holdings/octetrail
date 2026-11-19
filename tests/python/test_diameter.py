@@ -57,6 +57,18 @@ class DiameterTests(unittest.TestCase):
         message = diameter.Diameter(len=32, cmd=280, flags=0x80, data=[avp])
         header = bytes.fromhex("0100002080000118") + bytes(12)
         self.assertEqual(bytes(message), header + CASES["dpkt_s"][20:32])
+        # Packing leaves the 24-bit fields as ints, so a message packs twice.
+        self.assertEqual((message.len, message.cmd, avp.len), (32, 280, 12))
+        self.assertEqual(bytes(message), header + CASES["dpkt_s"][20:32])
+
+    def test_zero_lengths_are_filled_on_pack(self):
+        avp = diameter.AVP(code=264, flags=0x40, data=b"h002")
+        message = diameter.Diameter(cmd=280, flags=0x80, data=[avp])
+        header = bytes.fromhex("0100002080000118") + bytes(12)
+        self.assertEqual(bytes(message), header + CASES["dpkt_s"][20:32])
+        self.assertEqual((message.len, avp.len), (32, 12))
+        vendor = diameter.AVP(code=1, flags=0x80, vendor=7, data=b"ab")
+        self.assertEqual(bytes(vendor)[5:8], b"\0\0\x0e")
 
 
 if __name__ == "__main__":

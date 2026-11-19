@@ -1,0 +1,80 @@
+name: Fuzz
+
+# Runs every libFuzzer target in fuzz/ once a week and on demand, 15 minutes per target
+# by default. The corpus is kept in the Actions cache between runs. A crash fails the
+# job and uploads the reproducing input as an artifact.
+
+on:
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: 'Seconds per target'
+        type: number
+        default: 900
+
+permissions:
+  contents: read
+
+env:
+  # cargo-fuzz needs nightly for -Zsanitizer. Pinned so a nightly regression shows up as a
+  # deliberate bump, not as a fuzz failure.
+  NIGHTLY: nightly-2026-11-13
+  CARGO_FUZZ_VERSION: 0.13.2
+
+jobs:
+  fuzz:
+    name: ${{ matrix.target }}
+    if: github.repository == 'Defense-Exploration-Holdings/octetrail'
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - pcap_reader
+          - pcapng_reader
+          - packet
+          - diameter
+          - dhcp
+          - dns
+          - http
+          - http2
+          - netflow
+          - ieee80211
+          - tls
+          - h225
+          - asn1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: fuzz
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install nightly and cargo-fuzz
+        run: |
+          rustup toolchain install "$NIGHTLY" --profile minimal
+          cargo "+$NIGHTLY" install cargo-fuzz --version "$CARGO_FUZZ_VERSION" --locked
+      - name: Restore the corpus
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-corpus-${{ matrix.target }}-
+      - name: Run
+        env:
+          TARGET: ${{ matrix.target }}
+          SECONDS_PER_TARGET: ${{ inputs.seconds || 900 }}
+        run: |
+          cargo "+$NIGHTLY" fuzz run -O "$TARGET" -- \
+            -max_total_time="$SECONDS_PER_TARGET" -rss_limit_mb=2048 -timeout=10
+      - name: Upload crashing inputs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts/
+          if-no-files-found: ignore
+          retention-days: 30

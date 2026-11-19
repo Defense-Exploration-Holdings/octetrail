@@ -233,11 +233,10 @@ DECLARED = {
         ("loop_ethernet_fragment_after_hop", ("Loopback", "Ethernet")),
     )
 }
-# Loopback decodes IPv6 without a try, so the error escapes, as in dpkt. It is
-# FragmentOffsetError, which subclasses AttributeError, with dpkt's message.
-DECLARED["cases.loop_fragment_after_hop"] = {
-    "error": "FragmentOffsetError",
-    "message": "'IP6HopOptsHeader' object has no attribute 'frag_off'",
+# OctetRail fixes dpkt here (hop-by-hop options must end inside their header). These keys are not compared;
+# tests/python checks the fixed results.
+FIXED = {
+    "cases.loop_fragment_after_hop",
 }
 
 
@@ -288,7 +287,9 @@ def main():
         reports.append(flatten(json.loads(result.stdout)))
     reference = reports[1]
     for (_, module, v), report in zip(providers[2:], reports[2:], strict=True):
-        wrong = sorted(k for k in reference if not _matches(k, report.get(k), reference))
+        wrong = sorted(
+            k for k in reference if k not in FIXED and not _matches(k, report.get(k), reference)
+        )
         C.require(not wrong, "SLL or loopback mismatch " + module + v + ": " + ", ".join(wrong))
     print(
         json.dumps(
@@ -300,6 +301,7 @@ def main():
                     k for k in reference if reports[0].get(k) != reference[k]
                 ),
                 "declared_differences": sorted(DECLARED),
+                "fixed_dpkt_bugs": sorted(FIXED),
                 "unexpected_mismatches": 0,
             },
             indent=2,

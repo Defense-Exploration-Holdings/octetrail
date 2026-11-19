@@ -110,9 +110,8 @@ class MissingLengthError(UnpackError, IndexError):
 class DHCP(Packet):
     """Dynamic Host Configuration Protocol.
 
-    ``opts`` is a list of (type, data) tuples. As in dpkt, the default options
-    hold str values, so a new DHCP packs only after they are replaced with
-    bytes.
+    ``opts`` is a list of (type, data) tuples. The default asks for an address,
+    router, netmask and DNS servers in a DHCPDISCOVER.
     """
 
     __hdr__ = (
@@ -133,12 +132,10 @@ class DHCP(Packet):
         ("magic", "I", DHCP_MAGIC),
     )
     opts = (
-        (DHCP_OPT_MSGTYPE, chr(DHCPDISCOVER)),
+        (DHCP_OPT_MSGTYPE, bytes([DHCPDISCOVER])),
         (
             DHCP_OPT_PARAM_REQ,
-            "".join(
-                map(chr, (DHCP_OPT_REQ_IP, DHCP_OPT_ROUTER, DHCP_OPT_NETMASK, DHCP_OPT_DNS_SVRS))
-            ),
+            bytes((DHCP_OPT_REQ_IP, DHCP_OPT_ROUTER, DHCP_OPT_NETMASK, DHCP_OPT_DNS_SVRS)),
         ),
     )  # list of (type, data) tuples
 

@@ -184,6 +184,13 @@ def provenance(module, version):
 # OctetRail raises dhcp.MissingLengthError, which is both an UnpackError and an
 # IndexError, with the same message.
 _MISSING = {"error": "MissingLengthError", "message": "index out of range"}
+# OctetRail fixes dpkt here (default options are bytes and pack). These keys are not compared;
+# tests/python checks the fixed results.
+FIXED = {
+    "constructed.default_bytes",
+    "constructed.default_opts",
+}
+
 DECLARED = {
     "cases.missing_length": _MISSING,
     "cases.pad_then_missing_length": _MISSING,
@@ -237,7 +244,11 @@ def main():
         reports.append(flatten(json.loads(result.stdout)))
     reference = reports[1]
     for (_, module, v), report in zip(providers[2:], reports[2:], strict=True):
-        wrong = sorted(k for k in reference if report.get(k) != DECLARED.get(k, reference[k]))
+        wrong = sorted(
+            k
+            for k in reference
+            if k not in FIXED and report.get(k) != DECLARED.get(k, reference[k])
+        )
         C.require(not wrong, "DHCP mismatch " + module + v + ": " + ", ".join(wrong))
     print(
         json.dumps(
@@ -249,6 +260,7 @@ def main():
                     k for k in reference if reports[0].get(k) != reference[k]
                 ),
                 "declared_differences": sorted(DECLARED),
+                "fixed_dpkt_bugs": sorted(FIXED),
                 "unexpected_mismatches": 0,
             },
             indent=2,

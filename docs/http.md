@@ -54,30 +54,32 @@ dpkt reads a message line by line with `BytesIO`, and the same rules apply here:
   that word are kept. A line without a colon gives an empty value.
 - **Body.** The body is chosen in this order:
   1. `Transfer-Encoding: chunked` (any case) reads chunks until a zero-size
-     chunk. Each size is the first word of its line, read as `int(size, 16)`.
-  2. Otherwise `Content-Length` reads that many bytes, read as `int()`.
+     chunk. Each size is the first word of its line, in hex digits, and a chunk
+     extension after `;` is ignored.
+  2. Otherwise `Content-Length` reads that many bytes. The value must be
+     decimal digits.
   3. Otherwise `Content-Type` reads to the end.
   4. Otherwise the body is empty.
 
   Responses with a status below 200, or with 204 or 304, have no body.
 
-Whitespace follows Python's rules, which count 0x1c to 0x1f as whitespace in
-text. Integers follow `int()`, which accepts signs, underscores and a `0x` prefix
-on chunk sizes.
+Whitespace around a size is allowed. Signs, underscores and a `0x` prefix are
+not. dpkt reads sizes with Python's `int()`, which accepts all three, so a
+request with `Content-Length: +1_0` is framed differently by dpkt than by a
+server that follows the RFC.
 
 ## Errors
 
-- `NeedData`: the body is shorter than Content-Length, the length is negative,
-  or a chunked body ends before its zero-size chunk.
+- `NeedData`: the body is shorter than Content-Length, or a chunked body ends
+  before its zero-size chunk.
 - `UnpackError`: the start line is invalid, a header name is not one word, or a
   chunk size is missing or invalid.
 - `HeaderValueError`, `HeaderTypeError` and `HeaderAttributeError`: a
-  Content-Length that is not an integer, a repeated Content-Length and a
+  Content-Length that is not plain digits, a repeated Content-Length and a
   repeated Transfer-Encoding. dpkt raises `ValueError`, `TypeError` and
   `AttributeError` here. Each class is both an `UnpackError` and that builtin
   error, with the same message.
-- `LengthOverflowError`: a Content-Length or chunk size outside the range of
-  `Py_ssize_t` (from -2\*\*63 to 2\*\*63 - 1 on 64-bit builds). dpkt raises
+- `LengthOverflowError`: a Content-Length or chunk size above 2\*\*63 - 1. dpkt raises
   `OverflowError` with "cannot fit 'int' into an index-sized integer". The class
   is both an `UnpackError` and an `OverflowError`, with that message.
 

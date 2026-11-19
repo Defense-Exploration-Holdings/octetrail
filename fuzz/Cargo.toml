@@ -9,7 +9,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-octetrail = { path = ".." }
+octetrail = { path = "..", features = ["protocols"] }
 
 # Kept out of the main workspace so ordinary builds and wheels never need nightly.
 [workspace]

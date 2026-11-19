@@ -32,9 +32,8 @@ Each option packs as its type, its length and its data, followed by an end
 option. With no options nothing is packed after the header, not even the end
 option. `len()` counts one end byte either way, as in dpkt.
 
-As in dpkt, the default options of a new `DHCP` hold `str` values, so
-`bytes(dhcp.DHCP())` raises `struct.error`. Pass `opts` with bytes values to
-pack a new message.
+A new `DHCP` defaults to a DHCPDISCOVER that asks for an address, router,
+netmask and DNS servers. dpkt's defaults are `str` values that do not pack.
 
 ## Errors
 

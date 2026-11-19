@@ -43,7 +43,8 @@ assert bytes(Note(id=9)) == b"\x01\x10\x00\x09"
   Names outside the header are allowed and become plain attributes.
 - `bytes()` and `pack()` return `pack_hdr()` followed by `bytes(data)`.
   `pack_hdr()` raises `PackError` when a value does not fit its format.
-  `len()` is the header length plus `len(data)`. `str()` is the text of `bytes()`.
+  `len()` is the header length plus `len(data)`. `str()` is the same as
+  `repr()`. In dpkt it is the text of `bytes()`, such as `b'...'`.
 - Iterating yields `(name, value)` pairs for the header fields, so `dict(p)`
   works. `p[Cls]` returns the first payload of class `Cls` down the `data`
   chain, or raises `KeyError`, and `Cls in p` tests for one.

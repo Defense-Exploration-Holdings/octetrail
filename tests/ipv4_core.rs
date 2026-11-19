@@ -1,3 +1,4 @@
+#![cfg(feature = "protocols")]
 use octetrail::ipv4::{checksum, Error, Header, Packet};
 
 const HEADER: [u8; 20] = [

@@ -1,3 +1,4 @@
+#![cfg(feature = "protocols")]
 use octetrail::ethernet::{crc32, Error, Frame, Kind, Llc, Stack, HEADER_LEN, ISL_LEN};
 
 fn header(kind: u16) -> Vec<u8> {

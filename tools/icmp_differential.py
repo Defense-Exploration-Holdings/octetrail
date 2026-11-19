@@ -209,6 +209,9 @@ def provenance(module, version):
 # a header that is not a fragment header. OctetRail raises FragmentOffsetError,
 # an UnpackError, inside the quote, so ICMP6 keeps the quote as bytes, as
 # Ethernet and IP6 keep such a payload.
+# An IPv6 packet built from fields gets its payload length on pack.
+FIXED = {"constructed.ip6_icmp6_checksum"}
+
 DECLARED = {
     "cases.icmp6_quote_fragment_after_ah": {
         "class": "ICMP6",
@@ -262,7 +265,11 @@ def main():
         reports.append(flatten(json.loads(result.stdout)))
     reference = reports[1]
     for (_, module, v), report in zip(providers[2:], reports[2:], strict=True):
-        wrong = sorted(k for k in reference if report.get(k) != DECLARED.get(k, reference[k]))
+        wrong = sorted(
+            k
+            for k in reference
+            if k not in FIXED and report.get(k) != DECLARED.get(k, reference[k])
+        )
         C.require(not wrong, "ICMP mismatch " + module + v + ": " + ", ".join(wrong))
     print(
         json.dumps(
@@ -274,6 +281,7 @@ def main():
                     k for k in reference if reports[0].get(k) != reference[k]
                 ),
                 "declared_differences": sorted(DECLARED),
+                "fixed_dpkt_bugs": sorted(FIXED),
                 "unexpected_mismatches": 0,
             },
             indent=2,

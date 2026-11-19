@@ -1,3 +1,4 @@
+#![cfg(feature = "protocols")]
 use octetrail::ipv6::{checksum, Body, Error, Extension, Header, Packet};
 
 fn literal(plen: u16, next: u8, payload: &[u8]) -> Vec<u8> {
@@ -34,7 +35,7 @@ fn payload_is_plen_bytes_or_everything() {
 
 #[test]
 fn chain_of_every_extension() {
-    let mut payload = vec![43, 0, 1, 0, 0, 0, 5, 1]; // hop-by-hop: PadN, then option 5
+    let mut payload = vec![43, 0, 1, 0, 0, 5, 1, 9]; // hop-by-hop: PadN, Pad1, option 5
     payload.extend([44, 2, 0, 1, 0, 0, 0, 0]); // routing with one address
     payload.extend([0x20; 16]);
     payload.extend([51, 0, 0x00, 0x09, 0, 0, 0, 7]); // fragment, offset 1, more
@@ -73,12 +74,12 @@ fn a_short_extension_keeps_the_ones_before_it() {
 }
 
 #[test]
-fn ah_with_zero_length_drops_four_bytes() {
+fn ah_with_zero_length_has_no_auth_data() {
     let ext =
         Extension::parse(51, &[59, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 1, 2, 3, 4, 5, 6]).unwrap();
     assert_eq!(
         (ext.length, ext.data, ext.body),
-        (8, (12, 18), Body::Ah((12, 14)))
+        (8, (12, 18), Body::Ah((12, 12)))
     );
 }
 

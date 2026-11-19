@@ -25,5 +25,7 @@ Python package. Resource limits that are documented as caller-configurable
 are not vulnerabilities on their own, but a default that can be exceeded with a
 small input is.
 
-The Rust code forbids `unsafe`. Parsers are fuzzed continuously with the targets
-in [fuzz/](fuzz/README.md).
+The Rust code forbids `unsafe`. The libFuzzer targets in [fuzz/](fuzz/README.md)
+run weekly in the public repository, 15 minutes per target, and can be run by
+hand. They cover the Rust readers and walks; the Python protocol classes are
+covered by unit tests and a differential against dpkt instead.

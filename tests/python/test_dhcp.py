@@ -1,7 +1,6 @@
 """DHCP messages parsed and packed the way dpkt 1.9.8 does."""
 
 import importlib.util
-import struct
 import unittest
 from pathlib import Path
 
@@ -53,9 +52,9 @@ class DhcpTests(unittest.TestCase):
         self.assertEqual(bytes(message)[-4:], b"\x35\x01\x05\xff")
         self.assertEqual(len(message), 240 + 3 + 1)
         self.assertEqual(dhcp.DHCP(opts=[]).pack_opts(), b"")
-        # As in dpkt, the default options hold str values and do not pack.
-        with self.assertRaises(struct.error):
-            bytes(dhcp.DHCP())
+        default = bytes(dhcp.DHCP())
+        self.assertEqual(default[240:], b"\x35\x01\x01\x37\x04\x32\x03\x01\x06\xff")
+        self.assertEqual(len(dhcp.DHCP()), len(default))
 
 
 if __name__ == "__main__":

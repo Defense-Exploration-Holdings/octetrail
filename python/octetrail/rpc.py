@@ -36,6 +36,10 @@ RPC_MISMATCH = 0
 AUTH_ERROR = 1
 
 
+def _pad4(n):
+    return (n + 3) & ~3
+
+
 class RPC(Packet):
     """An ONC RPC message (RFC 5531): a call, or a reply that accepts or rejects it.
 
@@ -55,10 +59,13 @@ class RPC(Packet):
             self.data = self.data[4 : 4 + n]
 
         def __len__(self):
-            return 8 + len(self.data)
+            # XDR pads the opaque body to a multiple of four bytes.
+            return 8 + _pad4(len(self.data))
 
         def __bytes__(self):
-            return self.pack_hdr() + struct.pack(">I", len(self.data)) + bytes(self.data)
+            body = bytes(self.data)
+            pad = b"\x00" * (_pad4(len(body)) - len(body))
+            return self.pack_hdr() + struct.pack(">I", len(body)) + body + pad
 
     class Call(Packet):
         __hdr__ = (("rpcvers", "I", 2), ("prog", "I", 0), ("vers", "I", 0), ("proc", "I", 0))
@@ -74,7 +81,7 @@ class RPC(Packet):
 
         def __bytes__(self):
             return (
-                Packet.__bytes__(self)
+                self.pack_hdr()
                 + bytes(getattr(self, "cred", RPC.Auth()))
                 + bytes(getattr(self, "verf", RPC.Auth()))
                 + bytes(self.data)

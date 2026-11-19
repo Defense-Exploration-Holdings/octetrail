@@ -4,14 +4,14 @@ build-backend = "maturin"
 
 [project]
 name = "octetrail"
-version = "0.7.2"
-description = "Measured offline capture I/O subset from the OctetRail dpkt rewrite"
+version = "1.0.0"
+description = "Fast packet parsing and pcap I/O for Python, written in Rust"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "BSD-3-Clause"
 license-files = ["LICENSE", "NOTICE", "licenses/**/*.txt", "licenses/README.md"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Programming Language :: Rust",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",

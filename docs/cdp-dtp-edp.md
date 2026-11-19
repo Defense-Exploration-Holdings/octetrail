@@ -29,8 +29,9 @@ entry built with a `len` of 0 gets its length when packed.
 ## DTP
 
 `DTP` has the version `v`, and `data` is a list of `(type, value)` pairs, each
-value cut to the bytes present. As in dpkt, packing writes the entries but not
-the version, and `len()` counts the header and the number of entries.
+value cut to the bytes present. Packing writes the version and the entries,
+and `len()` is the packed length. dpkt leaves the version out of the packed
+bytes and counts entries instead of bytes in `len()`.
 
 ## EDP
 

@@ -143,11 +143,11 @@ IP_LEN_MAX = 0xFFFF
 IP_LEN_MIN = IP_HDR_LEN
 
 # Reserved Addresses
-IP_ADDR_ANY = "\x00\x00\x00\x00"  # 0.0.0.0
-IP_ADDR_BROADCAST = "\xff\xff\xff\xff"  # 255.255.255.255
-IP_ADDR_LOOPBACK = "\x7f\x00\x00\x01"  # 127.0.0.1
-IP_ADDR_MCAST_ALL = "\xe0\x00\x00\x01"  # 224.0.0.1
-IP_ADDR_MCAST_LOCAL = "\xe0\x00\x00\xff"  # 224.0.0.255
+IP_ADDR_ANY = b"\x00\x00\x00\x00"  # 0.0.0.0
+IP_ADDR_BROADCAST = b"\xff\xff\xff\xff"  # 255.255.255.255
+IP_ADDR_LOOPBACK = b"\x7f\x00\x00\x01"  # 127.0.0.1
+IP_ADDR_MCAST_ALL = b"\xe0\x00\x00\x01"  # 224.0.0.1
+IP_ADDR_MCAST_LOCAL = b"\xe0\x00\x00\xff"  # 224.0.0.255
 
 # Type of service (ip_tos), RFC 1349 ("obsoleted by RFC 2474")
 IP_TOS_DEFAULT = 0x00  # default
@@ -319,12 +319,19 @@ IP_PROTO_RESERVED = IP_PROTO_RAW  # Reserved
 IP_PROTO_MAX = 255
 
 
+# Protocol names that share a module name with an unrelated protocol. Protocol 118
+# is the Schedule Transfer Protocol, not the Spanning Tree Protocol in stp.py.
+_NOT_DECODED = frozenset({"STP"})
+
+
 def _load_protos():
     # Each IP_PROTO_<NAME> maps to class <NAME> of module <name> when one exists.
     for k, v in list(globals().items()):
         if k.startswith("IP_PROTO_"):
             name = k[9:]
             _ip_proto_names[v] = name
+            if name in _NOT_DECODED:
+                continue
             try:
                 mod = importlib.import_module(__package__ + "." + name.lower())
                 IP.set_proto(v, getattr(mod, name))

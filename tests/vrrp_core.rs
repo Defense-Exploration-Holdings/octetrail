@@ -1,3 +1,4 @@
+#![cfg(feature = "protocols")]
 use octetrail::vrrp::{layout, Layout};
 
 #[test]

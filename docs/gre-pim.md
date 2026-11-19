@@ -32,8 +32,9 @@ and also set as an attribute named after its class. A payload class that raises
 `UnpackError` or `NeedData` leaves the bytes.
 
 Packing writes the header, the option fields the flags select, the entries and
-`data`. An option field the flags select but the packet lacks raises
-`AttributeError`, as in dpkt. Checksums are not computed.
+`data`. An option field the flags select but the packet lacks packs as 0. On a
+version 0 packet built from fields with the checksum flag set, a `sum` of 0 is
+computed over the GRE header and payload. A parsed packet keeps its `sum`.
 
 ## PIM
 

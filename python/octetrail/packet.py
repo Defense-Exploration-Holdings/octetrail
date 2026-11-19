@@ -219,9 +219,6 @@ class Packet(metaclass=_MetaPacket):
         print(" " * (indent - 1), end="")
         print(")  # %s" % self.__class__.__name__)
 
-    def __str__(self):
-        return str(self.__bytes__())
-
     def __bytes__(self):
         return self.pack_hdr() + bytes(self.data)
 

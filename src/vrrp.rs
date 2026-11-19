@@ -13,19 +13,16 @@ pub struct Layout {
 }
 
 /// Split `data` into `count` four-byte addresses and the authentication data.
-/// As in dpkt, the authentication data starts four bytes after the last
-/// address offset, so a count of zero skips four bytes.
+/// The authentication data starts right after the last address. dpkt starts it
+/// four bytes later when `count` is zero.
 pub fn layout(count: u8, data: &[u8]) -> Layout {
     let clamp = |at: usize| at.min(data.len());
-    let mut addrs = Vec::with_capacity(usize::from(count));
-    let mut off = 0;
-    for n in 0..usize::from(count) {
-        off = 4 * n;
-        addrs.push((clamp(off), clamp(off + 4)));
-    }
+    let addrs = (0..usize::from(count))
+        .map(|n| (clamp(4 * n), clamp(4 * n + 4)))
+        .collect();
     Layout {
         addrs,
-        auth: (clamp(off + 4), data.len()),
+        auth: (clamp(4 * usize::from(count)), data.len()),
     }
 }
 
@@ -34,14 +31,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn zero_count_skips_four_bytes() {
+    fn zero_count_starts_auth_at_zero() {
         assert_eq!(
             layout(0, b"abcdefg"),
             Layout {
                 addrs: vec![],
-                auth: (4, 7)
+                auth: (0, 7)
             }
         );
+    }
+
+    #[test]
+    fn auth_follows_the_last_address() {
+        let found = layout(2, b"aaaabbbbcc");
+        assert_eq!(found.addrs, vec![(0, 4), (4, 8)]);
+        assert_eq!(found.auth, (8, 10));
     }
 
     #[test]

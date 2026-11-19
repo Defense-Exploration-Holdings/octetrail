@@ -17,7 +17,7 @@ inputs and observations, not every upstream API or malformed input.
 | Python readers | Concrete Reader classes, iteration, metadata and callback methods |
 | Python timestamps | Classic microseconds as float, classic nanoseconds as Decimal, PCAPNG as float |
 | Output | Classic records and one-section/one-interface PCAPNG EPBs with bounded primitive options |
-| UniversalReader | 1.9.8-style selection over supported formats; absent from the 1.9.6 reference |
+| UniversalReader | Selection by magic bytes over supported formats; absent from the 1.9.6 reference |
 | Package identity | octetrail distribution and imports; no installed dpkt namespace or resolver substitute |
 
 See the [capture API reference](capture-api-ledger.md), [Python reader
@@ -32,8 +32,8 @@ fractions and inconsistent lengths. Some upstream paths accept those inputs.
 PCAPNG packets use their own interface clocks; the references use first-interface
 interpretation on some multi-interface inputs. Error classes are mapped for the
 covered subset, while complete messages, timing and object identity are not
-claimed compatible. UniversalReader retains additional format-selection and
-cursor differences documented in its guide.
+claimed compatible. UniversalReader picks the format by its magic bytes instead
+of dpkt's try-and-rewind rules; see its guide.
 
 Streaming is incremental. EOF and native record errors are terminal. Readers
 borrow Python streams; path-opening helpers own their files; Writer.close closes

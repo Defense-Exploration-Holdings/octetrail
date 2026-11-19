@@ -31,8 +31,9 @@ built from its own bytes, so a long stream parses in linear time.
 
 ## Packing
 
-`bytes()` packs the 9-byte header and `data`. `length_bytes` is packed as it
-is. It is not computed.
+`bytes()` packs the 9-byte header and `data`. On a frame built from fields, a
+zero `length_bytes` is set to the length of `data`. A parsed frame keeps its
+`length_bytes`.
 
 ## Errors
 

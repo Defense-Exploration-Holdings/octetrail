@@ -100,7 +100,7 @@ class Frame(Packet):
     # (and store it as bytes so dpkt doesn't get confused), and turn it into
     # an int in a user-facing property
     __hdr__ = (
-        ("length_bytes", "3s", 0),
+        ("length_bytes", "3s", b"\x00\x00\x00"),
         ("type", "B", 0),
         ("flags", "B", 0),
         ("stream_id", "I", 0),
@@ -116,6 +116,17 @@ class Frame(Packet):
     @property
     def length(self):
         return struct.unpack("!I", b"\x00" + self.length_bytes)[0]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # A frame built from fields gets a zero length filled in on pack. A
+        # parsed frame packs back to its own bytes.
+        self._fill_on_pack = not args
+
+    def pack_hdr(self):
+        if self._fill_on_pack and self.length_bytes == b"\x00\x00\x00" and len(self.data):
+            self.length_bytes = struct.pack("!I", len(self.data))[1:]
+        return Packet.pack_hdr(self)
 
 
 class Priority(Packet):

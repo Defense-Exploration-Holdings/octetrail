@@ -17,8 +17,8 @@ with pcapng.open("synthetic.pcapng", max_packet_bytes=1024 * 1024) as reader:
 a context manager. The inherited classic-reader convenience methods and explicit
 close behavior are described in [python-reader.md](python-reader.md). The two
 formats are selected explicitly; the classic CLI and Reader do not autodetect
-PCAPNG. The separate [UniversalReader factory](universal-reader.md) adds measured
-1.9.8-style selection, with an absolute rewind on fallback.
+PCAPNG. The separate [UniversalReader factory](universal-reader.md) picks the format
+from the magic bytes.
 
 ## Covered format and time model
 

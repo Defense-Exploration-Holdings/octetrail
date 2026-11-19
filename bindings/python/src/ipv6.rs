@@ -6,6 +6,7 @@ use pyo3::types::{PyBytes, PyList, PyTuple};
 
 pyo3::create_exception!(_native, Ipv6ShortError, PyException);
 pyo3::create_exception!(_native, Ipv6OptionsError, PyException);
+pyo3::create_exception!(_native, Ipv6OptionLengthError, PyException);
 
 type Range = (usize, usize);
 type Fields<'py> = (u32, u16, u8, u8, Bound<'py, PyBytes>, Bound<'py, PyBytes>);
@@ -14,6 +15,8 @@ fn error(failure: ipv6::Error) -> PyErr {
     match failure {
         ipv6::Error::Short(have, need) => Ipv6ShortError::new_err((have, need)),
         ipv6::Error::Options => Ipv6OptionsError::new_err(()),
+        ipv6::Error::OptionLength => Ipv6OptionLengthError::new_err(()),
+        ipv6::Error::NotExtension(_) => PyValueError::new_err("not an IPv6 extension header"),
     }
 }
 
@@ -36,9 +39,6 @@ fn extension<'py>(py: Python<'py>, ext: &Extension) -> PyResult<Bound<'py, PyTup
 
 #[pyfunction]
 fn _ipv6_extension<'py>(py: Python<'py>, kind: u8, raw: &[u8]) -> PyResult<Bound<'py, PyTuple>> {
-    if !ipv6::EXTENSIONS.contains(&kind) {
-        return Err(PyValueError::new_err("not an IPv6 extension header"));
-    }
     extension(py, &Extension::parse(kind, raw).map_err(error)?)
 }
 
@@ -93,6 +93,10 @@ pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add(
         "Ipv6OptionsError",
         module.py().get_type::<Ipv6OptionsError>(),
+    )?;
+    module.add(
+        "Ipv6OptionLengthError",
+        module.py().get_type::<Ipv6OptionLengthError>(),
     )?;
     Ok(())
 }

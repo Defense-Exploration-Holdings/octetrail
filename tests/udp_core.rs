@@ -1,3 +1,4 @@
+#![cfg(feature = "protocols")]
 use octetrail::udp::{Datagram, Error, Header, Limits, HEADER_LEN};
 
 // Independent wire fields: 12345, 54321, 12, 0x1234, then opaque ASCII.

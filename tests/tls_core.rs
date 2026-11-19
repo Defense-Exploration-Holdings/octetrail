@@ -1,3 +1,4 @@
+#![cfg(feature = "protocols")]
 use octetrail::tls::{
     certificates, extensions, multi_factory, ssl2, tls_records, variable_array, Error, Hello,
 };

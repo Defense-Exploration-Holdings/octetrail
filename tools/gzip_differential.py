@@ -194,6 +194,12 @@ def provenance(module, version):
 
 # Observations where OctetRail differs from 1.9.8 on purpose: a file name that
 # is not UTF-8 raises an error that is also an UnpackError, with dpkt's message.
+# OctetRail fixes dpkt here (the magic and method are checked). These keys are not compared;
+# tests/python checks the fixed results.
+FIXED = {
+    "cases.bad_magic",
+}
+
 DECLARED = {
     "cases.name_not_utf8": {
         "error": "FilenameDecodeError",
@@ -244,7 +250,11 @@ def main():
         reports.append(flatten(json.loads(result.stdout)))
     reference = reports[1]
     for (_, module, v), report in zip(providers[2:], reports[2:], strict=True):
-        wrong = sorted(k for k in reference if report.get(k) != DECLARED.get(k, reference[k]))
+        wrong = sorted(
+            k
+            for k in reference
+            if k not in FIXED and report.get(k) != DECLARED.get(k, reference[k])
+        )
         C.require(not wrong, "gzip mismatch " + module + v + ": " + ", ".join(wrong))
     print(
         json.dumps(
@@ -256,6 +266,7 @@ def main():
                     k for k in reference if reports[0].get(k) != reference[k]
                 ),
                 "declared_differences": sorted(DECLARED),
+                "fixed_dpkt_bugs": sorted(FIXED),
                 "unexpected_mismatches": 0,
             },
             indent=2,

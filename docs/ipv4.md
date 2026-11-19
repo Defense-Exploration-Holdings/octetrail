@@ -59,7 +59,8 @@ dpkt, `IP6` shares it, and it is filled from the `IP_PROTO_*` names: each one
 maps to the class of the same name in the OctetRail module of that name when it
 exists. Today that is `IP` (0 and 4, through `octetrail.ipip`), `ICMP`,
 `IGMP`, `TCP`, `UDP`, `GRE`, `IP6`, `ESP`, `AH`, `ICMP6`, `OSPF`, `PIM`,
-`VRRP`, `SCTP` and, as in dpkt, the Spanning Tree `STP` class for 118.
+`VRRP` and `SCTP`. Protocol 118 is the Schedule Transfer Protocol and stays
+bytes; dpkt decodes it with its Spanning Tree `STP` class.
 `get_ip_proto_name(p)` returns the name of a protocol number, or `None`.
 
 ## Packing

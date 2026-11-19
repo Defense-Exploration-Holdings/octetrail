@@ -5,7 +5,7 @@ describes the supported Enhanced Packet Block reader.
 The separate [classic writer guide](pcap-writer.md) describes output and file
 ownership, which differs from the borrowed Reader interface.
 
-The experimental distribution is `octetrail==0.7.2`, with an `octetrail` import.
+The distribution is `octetrail`, with an `octetrail` import.
 It neither provides `dpkt` nor satisfies a dependency on `dpkt==1.9.6` or
 `dpkt==1.9.8`. No fallback imports upstream dpkt. The native core still has no
 third-party runtime dependencies. A separate PyO3 extension adapts Python binary
@@ -61,7 +61,7 @@ rounding and traps. Defaults retain the measured dpkt behavior above. The
 
 - Ordinary pcap 2.4 is supported in both byte orders and both resolutions.
   Reader does not autodetect pcapng; use `octetrail.pcapng.Reader` explicitly,
-  or the measured [UniversalReader factory](universal-reader.md).
+  or the [UniversalReader factory](universal-reader.md).
   Reader performs no protocol dispatch or checksum validation. The separate
   Ethernet, IPv4, TCP and UDP modules parse the frames and packets.
   Modified pcap, filter execution, header classes and complete DLT/magic

@@ -81,6 +81,10 @@ class Gzip(Packet):
 
     def unpack(self, buf):
         super(Gzip, self).unpack(buf)
+        if self.magic != GZIP_MAGIC:
+            raise UnpackError("not a gzip member: magic %r" % bytes(self.magic))
+        if self.method != GZIP_MDEFLATE:
+            raise UnpackError("unsupported gzip method %d" % self.method)
         if self.flags & GZIP_FEXTRA:
             if len(self.data) < 2:
                 raise NeedData("Gzip extra")
@@ -140,10 +144,7 @@ class Gzip(Packet):
             zlib.DEF_MEM_LEVEL,
             zlib.Z_DEFAULT_STRATEGY,
         )
-        c.compress(self.data)
-
-        # .compress will return nothing if len(self.data) < the window size.
-        self.data = c.flush()
+        self.data = c.compress(self.data) + c.flush()
 
     def decompress(self):
         """Return decompressed payload."""

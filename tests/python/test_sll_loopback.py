@@ -65,9 +65,8 @@ class SllLoopbackTests(unittest.TestCase):
         )
         frame = loopback.Loopback(CASES["loop_ethernet_fragment_after_hop"]).data
         self.assertIsInstance(frame.data, bytes)
-        with self.assertRaises(ip6.FragmentOffsetError) as caught:
+        with self.assertRaises(octetrail.UnpackError):
             loopback.Loopback(CASES["loop_fragment_after_hop"])
-        self.assertIsInstance(caught.exception, AttributeError)
 
     def test_optimized_probe_rejects_wrong_provider_version(self):
         result = subprocess.run(

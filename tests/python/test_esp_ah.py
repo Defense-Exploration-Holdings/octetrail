@@ -49,7 +49,9 @@ class EspAhTests(unittest.TestCase):
         packet = ah.AH(raw)
         self.assertIsInstance(packet.data, bytes)
         self.assertEqual(bytes(packet), raw)
-        with self.assertRaises(ip6.FragmentOffsetError):
+        # The hop-by-hop options run past their declared length, which is an error
+        # before the fragment offset is looked at.
+        with self.assertRaises(octetrail.UnpackError):
             ip6.IP6(packet.data)
         self.assertIsInstance(ip.IP(CASES["ip_ah_fragment_after_hop"]).ah.data, bytes)
         self.assertIsInstance(ip6.IP6(CASES["ip6_ah_fragment_after_hop"]).data, bytes)

@@ -181,29 +181,57 @@ def open(path, *, max_packet_bytes=DEFAULT_MAX_PACKET_BYTES, decimal_timestamps=
         return reader
 
 
-class UniversalReader:
-    """Return a concrete native-backed Reader using dpkt 1.9.8 selection rules.
+_CLASSIC_MAGICS = frozenset(
+    bytes.fromhex(m) for m in ("a1b2c3d4", "d4c3b2a1", "a1b23c4d", "4d3cb2a1")
+)
+_PCAPNG_MAGIC = bytes.fromhex("0a0d0d0a")
 
-    Try classic PCAP at the current position. Only ValueError triggers an
-    absolute seek to zero and a PCAPNG attempt. The caller retains the stream.
-    This compatibility factory uses the readers' existing default limits.
+
+class _Replay:
+    """A read-only view of a stream with its first bytes already read."""
+
+    def __init__(self, head, fileobj):
+        self._head = head
+        self._fileobj = fileobj
+
+    def read(self, size=-1):
+        head = self._head
+        if not head:
+            return self._fileobj.read(size)
+        if 0 <= size <= len(head):
+            self._head = head[size:]
+            return head[:size]
+        self._head = b""
+        rest = self._fileobj.read(-1 if size < 0 else size - len(head))
+        return head + rest
+
+    def __getattr__(self, name):
+        return getattr(self._fileobj, name)
+
+
+class UniversalReader:
+    """Return a pcap.Reader or pcapng.Reader chosen by the capture's magic bytes.
+
+    The first four bytes are read from the current position. The stream needs
+    only read(); it is never seeked, and the caller keeps ownership of it.
     """
 
     def __new__(cls, fileobj, *, decimal_timestamps=False):
-        try:
-            return Reader(fileobj, decimal_timestamps=decimal_timestamps)
-        except ValueError as classic_error:
-            fileobj.seek(0)
+        if type(decimal_timestamps) is not bool:
+            raise TypeError("decimal_timestamps must be bool")
+        magic = fileobj.read(4)
+        if not isinstance(magic, bytes):
+            raise TypeError("capture stream read() must return bytes")
+        if len(magic) < 4:
+            raise NeedData("got %d, 4 needed at least" % len(magic))
+        source = _Replay(magic, fileobj)
+        if magic in _CLASSIC_MAGICS:
+            return Reader(source, decimal_timestamps=decimal_timestamps)
+        if magic == _PCAPNG_MAGIC:
             from . import pcapng
 
-            try:
-                return pcapng.Reader(fileobj, decimal_timestamps=decimal_timestamps)
-            except ValueError as pcapng_error:
-                # Preserve upstream's implicit context without adding a cause.
-                raise ValueError(  # noqa: B904
-                    "unknown pcap format; libpcap error: %s, pcapng error: %s"
-                    % (classic_error, pcapng_error)
-                )
+            return pcapng.Reader(source, decimal_timestamps=decimal_timestamps)
+        raise ValueError("unknown capture format: magic %s" % magic.hex())
 
 
 def _writer_u32(name, value):

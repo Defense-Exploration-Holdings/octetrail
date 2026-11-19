@@ -57,6 +57,8 @@ def _native_error(error):
     if isinstance(error, _native.Ipv6ShortError):
         have, need = error.args
         return NeedData("got %d, %d needed at least" % (have, need))
+    if isinstance(error, _native.Ipv6OptionLengthError):
+        return UnpackError("IPv6 option runs past the header length")
     return NeedData()
 
 
@@ -134,8 +136,19 @@ class IP6(Packet):
                     header_str += bytes(self.extension_hdrs[hdr])
         return nxt, header_str
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # A packet built from fields gets a zero plen filled in on pack. A
+        # parsed packet packs back to its own bytes.
+        self._fill_on_pack = not args
+
     def __bytes__(self):
         self.p, hdr_str = self.headers_str()
+        if self.plen == 0 and self._fill_on_pack:
+            # A jumbo payload (RFC 2675) does not fit and keeps 0.
+            plen = len(hdr_str) + len(self.data)
+            if plen <= 0xFFFF:
+                self.plen = plen
         if (
             (self.p == 6 or self.p == 17 or self.p == 58)
             and hasattr(self.data, "sum")
@@ -182,6 +195,8 @@ class IP6ExtensionHeader(Packet):
             raise struct.error("unpack requires a buffer of %d bytes" % self.__hdr_len__) from None
         except _native.Ipv6OptionsError:
             raise NeedData() from None
+        except _native.Ipv6OptionLengthError as error:
+            raise _native_error(error) from None
         _fill(self, _source(buf, raw), row, lazy=False)
 
 

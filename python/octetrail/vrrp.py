@@ -11,9 +11,7 @@ class VRRP(Packet):
     """Virtual Router Redundancy Protocol advertisement.
 
     ``addrs`` holds ``count`` four-byte addresses and ``auth`` the bytes after
-    them. As in dpkt, ``data`` is emptied when parsing, and the authentication
-    data starts four bytes after the last address, so a count of 0 skips four
-    bytes.
+    them. ``data`` is empty after parsing.
     """
 
     __hdr__ = (
@@ -32,7 +30,7 @@ class VRRP(Packet):
         )
     }
     addrs = ()
-    auth = ""
+    auth = b""
 
     def unpack(self, buf):
         Packet.unpack(self, buf)
@@ -41,7 +39,7 @@ class VRRP(Packet):
         addrs, (start, end) = _native._vrrp_layout(self.count, raw)
         self.addrs = [data[a:b] for a, b in addrs]
         self.auth = data[start:end]
-        self.data = ""
+        self.data = b""
 
     def __len__(self):
         return self.__hdr_len__ + (4 * self.count) + len(self.auth)

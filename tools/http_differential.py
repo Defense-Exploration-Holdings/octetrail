@@ -426,6 +426,15 @@ _OVERFLOW = {
     "error": "LengthOverflowError",
     "message": "cannot fit 'int' into an index-sized integer",
 }
+# OctetRail fixes dpkt here (Content-Length and chunk sizes are plain digits). These keys are not compared;
+# tests/python checks the fixed results.
+FIXED = {
+    "bad_length",
+    "huge_negative_chunk",
+    "huge_negative_length",
+    "negative_length",
+}
+
 DECLARED = {
     "huge_length": _OVERFLOW,
     "huge_negative_length": _OVERFLOW,
@@ -483,7 +492,11 @@ def main():
         reports.append(report["observations"])
     reference = reports[1]
     for (_, module, v), report in zip(providers[2:], reports[2:], strict=True):
-        wrong = sorted(k for k in reference if report.get(k) != DECLARED.get(k, reference[k]))
+        wrong = sorted(
+            k
+            for k in reference
+            if k not in FIXED and report.get(k) != DECLARED.get(k, reference[k])
+        )
         C.require(not wrong, "HTTP observation mismatch " + module + v + ": " + ", ".join(wrong))
     print(
         json.dumps(
@@ -502,6 +515,7 @@ def main():
                     k for k in reference if reports[0].get(k) != reference[k]
                 ),
                 "providers": len(providers),
+                "fixed_dpkt_bugs": sorted(FIXED),
                 "unexpected_mismatches": 0,
             },
             indent=2,

@@ -26,6 +26,14 @@ class Http2Tests(unittest.TestCase):
         padded = http2.FrameFactory(F.frame(0, b"\x02hi\x00\x00", flags=0x08))
         self.assertEqual(padded.payload, b"hi")
 
+    def test_zero_length_is_filled_on_pack(self):
+        frame = http2.Frame(type=0, stream_id=1, data=b"hello")
+        self.assertEqual(bytes(frame), b"\0\0\x05\0\0\0\0\0\x01hello")
+        self.assertEqual(frame.length, 5)
+        self.assertEqual(bytes(http2.Frame()), bytes(9))
+        given = http2.Frame(length_bytes=b"\0\0\x02", data=b"hello")
+        self.assertEqual(bytes(given)[:3], b"\0\0\x02")
+
     def test_multi_factory(self):
         frames, used = http2.frame_multi_factory(F.PREFACE + F.STREAM, preface=True)
         self.assertEqual([type(f).__name__ for f in frames][:2], ["SettingsFrame", "HeadersFrame"])

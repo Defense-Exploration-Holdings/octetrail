@@ -51,6 +51,8 @@ def cases():
                 [["1.25", "float", "616263"]],
                 start=len(ng),
                 first_only=True,
+                status="fixed",
+                fixed={"header": len(ng) + header, "rows": rows},
             )
         add(name + ".empty", raw[:header], format_name, header)
         add(
@@ -61,11 +63,22 @@ def cases():
             rows,
             nonseekable=True,
             error="AttributeError" if format_name == "pcapng" else None,
+            **({"status": "fixed", "fixed": {"error": None}} if format_name == "pcapng" else {}),
         )
     for length in (0, 3, 23):
         add(f"initial_short_{length}", ng[:length], error="NeedData")
     add("ng_packet_trailer_short", ng[:-1], "pcapng", 48, error="NeedData", error_phase="iteration")
-    add("seek_value_error", ng, mode="seek_value_error", error="ValueError", identity=True)
+    ng_rows = [["1.25", "float", "616263"]]
+    no_seek = {"error": None, "format": "pcapng", "header": 48, "rows": ng_rows}
+    add(
+        "seek_value_error",
+        ng,
+        mode="seek_value_error",
+        error="ValueError",
+        identity=True,
+        status="fixed",
+        fixed=no_seek,
+    )
     add("read_os_error", b"", mode="read_os_error", error="OSError", identity=True)
     add(
         "read_value_recovery",
@@ -74,9 +87,26 @@ def cases():
         48,
         [["1.25", "float", "616263"]],
         mode="read_value_recovery",
+        status="fixed",
+        fixed={"error": "ValueError", "identity": False},
     )
-    add("two_read_value_errors", b"", mode="two_read_value_errors", error="ValueError")
-    add("second_read_os_error", b"", mode="second_read_os_error", error="OSError", identity=True)
+    add(
+        "two_read_value_errors",
+        b"",
+        mode="two_read_value_errors",
+        error="ValueError",
+        status="fixed",
+        fixed={"message": "first read"},
+    )
+    add(
+        "second_read_os_error",
+        b"",
+        mode="second_read_os_error",
+        error="OSError",
+        identity=True,
+        status="fixed",
+        fixed={"error": "ValueError", "identity": False},
+    )
     add(
         "subclass_factory",
         micro,
@@ -89,14 +119,14 @@ def cases():
         "unknown_format",
         bytes(64),
         status="difference",
-        reason="Native PCAPNG validation text and consumed-header position differ.",
+        reason="Unknown magic bytes are rejected after reading only the magic.",
     )
     for length in (24, 27):
         add(
             f"initial_ng_header_{length}",
             ng[:length],
             status="difference",
-            reason="After fallback, native section truncation raises NeedData; upstream combines a ValueError.",
+            reason="PCAPNG magic selects the PCAPNG reader, whose truncation raises NeedData.",
         )
     add(
         "classic_short_payload",
@@ -110,6 +140,6 @@ def cases():
         "unsupported_classic_version",
         bytes(version),
         status="difference",
-        reason="Native version validation rejects input that upstream accepts.",
+        reason="Classic magic selects the classic reader, which rejects the version.",
     )
     return result

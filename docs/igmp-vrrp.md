@@ -24,14 +24,12 @@ assert vrrp.VRRP(bytes(advert)).addrs == [b"\x0a\x00\x00\x01"]
 `VRRP` has `v` and `type` (the two halves of the first byte), `vrid`,
 `priority`, `count`, `atype`, `advtime` and `sum`. Parsing reads `count`
 four-byte addresses into `addrs`, cut to the bytes present, and the bytes after
-them into `auth`. As in dpkt:
+them into `auth`. `data` is `b""` after parsing. Packing writes the header,
+`addrs` and `auth`, and computes a `sum` of 0.
 
-- `data` becomes the empty string `""`.
-- `auth` starts four bytes after the last address offset, so with a `count` of
-  0 the first four bytes are skipped.
-- A default `VRRP()` has `addrs` of `()` and `auth` of `""`, so packing it
-  raises `TypeError` until `auth` is set to bytes.
-- Packing writes the header, `addrs` and `auth`, and computes a `sum` of 0.
+dpkt differs in three ways: with a `count` of 0 it skips the first four bytes
+of `auth`, it sets `data` to the `str` `""`, and a default `VRRP()` has a `str`
+`auth` that does not pack.
 
 ## Errors
 

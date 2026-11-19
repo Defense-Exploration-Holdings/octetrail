@@ -371,6 +371,14 @@ def provenance(module, version):
 # UnpackError, inside the payload, so IP keeps it as bytes, as Ethernet, IP6 and
 # ICMP6 keep such a payload.
 _INNER = bytes.fromhex(IP6_FRAGMENT_AFTER_AH)[20:]
+# OctetRail fixes dpkt here (address constants are bytes, protocol 118 is not Spanning Tree). These keys are not compared;
+# tests/python checks the fixed results.
+FIXED = {
+    "cases.stp_protocol_118",
+    "constructed.constants",
+    "constructed.tables",
+}
+
 DECLARED = {
     "cases.ipv6_fragment_after_ah": {
         "class": "IP",
@@ -436,7 +444,11 @@ def main():
         reports.append(flatten(json.loads(result.stdout)))
     reference = reports[1]
     for (_, module, v), report in zip(providers[2:], reports[2:], strict=True):
-        wrong = sorted(k for k in reference if report.get(k) != DECLARED.get(k, reference[k]))
+        wrong = sorted(
+            k
+            for k in reference
+            if k not in FIXED and report.get(k) != DECLARED.get(k, reference[k])
+        )
         C.require(not wrong, "IPv4 mismatch " + module + v + ": " + ", ".join(wrong))
     print(
         json.dumps(
@@ -448,6 +460,7 @@ def main():
                     k for k in reference if reports[0].get(k) != reference[k]
                 ),
                 "declared_differences": sorted(DECLARED),
+                "fixed_dpkt_bugs": sorted(FIXED),
                 "unexpected_mismatches": 0,
             },
             indent=2,

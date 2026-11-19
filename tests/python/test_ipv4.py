@@ -82,6 +82,11 @@ class IPv4Tests(unittest.TestCase):
         self.assertIsInstance(ip.IP(CASES["ipv6_in_ip"]).ip6, ip6.IP6)
         self.assertEqual(ip.get_ip_proto_name(17), "UDP")
         self.assertIsNone(ip.get_ip_proto_name(999))
+        # 118 is the Schedule Transfer Protocol, not the Spanning Tree Protocol.
+        self.assertEqual(ip.get_ip_proto_name(118), "STP")
+        self.assertNotIn(118, ip.IP._protosw)
+        self.assertEqual(ip.IP_ADDR_ANY, bytes(4))
+        self.assertEqual(ip.IP_ADDR_LOOPBACK, b"\x7f\x00\x00\x01")
 
         class Opaque(octetrail.Packet):
             __hdr__ = (("x", "B", 0),)

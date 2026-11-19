@@ -1,43 +1,121 @@
-//! Bounded sequential reading of ordinary classic pcap 2.4 captures.
+//! Bounded reading and writing of capture files.
 //!
-//! This native API is deliberately stricter than dpkt on incomplete records.
-//! It does not claim Python API compatibility. See docs/compatibility.md.
-//! The separate [`pcapng`] module reads a bounded Enhanced Packet Block subset.
-//! The [`writer`] module emits validated classic-pcap records to a provided sink.
-//! The [`pcapng_writer`] module emits a bounded single-interface EPB subset.
+//! The stable API is the capture I/O: [`Reader`] for classic pcap 2.4,
+//! [`pcapng`] for a bounded Enhanced Packet Block subset, [`Writer`] for
+//! classic-pcap records and [`pcapng_writer`] for a single-interface EPB
+//! subset. The readers are deliberately stricter than dpkt on incomplete
+//! records.
+//!
+//! ```
+//! use octetrail::{Limits, Reader};
+//!
+//! // A little-endian pcap 2.4 header (link type 1) and one 4-byte record.
+//! let mut capture = Vec::new();
+//! capture.extend_from_slice(&0xa1b2_c3d4_u32.to_le_bytes());
+//! capture.extend_from_slice(&2_u16.to_le_bytes());
+//! capture.extend_from_slice(&4_u16.to_le_bytes());
+//! capture.extend_from_slice(&[0; 8]);
+//! capture.extend_from_slice(&65_535_u32.to_le_bytes());
+//! capture.extend_from_slice(&1_u32.to_le_bytes());
+//! for field in [1_u32, 0, 4, 4] {
+//!     capture.extend_from_slice(&field.to_le_bytes());
+//! }
+//! capture.extend_from_slice(b"\xde\xad\xbe\xef");
+//!
+//! let reader = Reader::new(capture.as_slice(), Limits::default())?;
+//! assert_eq!(reader.header().linktype, 1);
+//! let packets: Vec<_> = reader.collect::<Result<_, _>>()?;
+//! assert_eq!(packets.len(), 1);
+//! assert_eq!(packets[0].data, b"\xde\xad\xbe\xef");
+//! # Ok::<(), octetrail::Error>(())
+//! ```
+//!
+//! The protocol modules (`dns`, `http`, `ipv6`, `tls` and the others) are
+//! built only with the `protocols` feature, which the Python bindings turn
+//! on. They return offsets into the input and follow Python rules where the
+//! Python classes need them. They are hidden from this documentation and may
+//! change in any release.
 
 use std::fmt;
 use std::io::{self, Read};
 use std::iter::FusedIterator;
 
+#[cfg(feature = "protocols")]
+#[doc(hidden)]
 pub mod asn1;
+#[cfg(feature = "protocols")]
+#[doc(hidden)]
 pub mod cdp;
+#[cfg(feature = "protocols")]
+#[doc(hidden)]
 pub mod dhcp;
+#[cfg(feature = "protocols")]
+#[doc(hidden)]
 pub mod diameter;
+#[cfg(feature = "protocols")]
+#[doc(hidden)]
 pub mod dns;
+#[cfg(feature = "protocols")]
+#[doc(hidden)]
 pub mod dtp;
+#[cfg(feature = "protocols")]
+#[doc(hidden)]
 pub mod ethernet;
+#[cfg(feature = "protocols")]
+#[doc(hidden)]
 pub mod gre;
+#[cfg(feature = "protocols")]
+#[doc(hidden)]
 pub mod h225;
+#[cfg(feature = "protocols")]
+#[doc(hidden)]
 pub mod http;
+#[cfg(feature = "protocols")]
+#[doc(hidden)]
 pub mod http2;
+#[cfg(feature = "protocols")]
+#[doc(hidden)]
 pub mod ieee80211;
+#[cfg(feature = "protocols")]
+#[doc(hidden)]
 pub mod ipv4;
+#[cfg(feature = "protocols")]
+#[doc(hidden)]
 pub mod ipv6;
+#[cfg(feature = "protocols")]
+#[doc(hidden)]
 pub mod netflow;
 pub mod pcapng;
 pub mod pcapng_writer;
+#[cfg(feature = "protocols")]
+#[doc(hidden)]
 pub mod radius;
+#[cfg(feature = "protocols")]
+#[doc(hidden)]
 pub mod rip;
 pub mod writer;
 pub use writer::Writer;
 
+#[cfg(feature = "protocols")]
+#[doc(hidden)]
 pub mod sctp;
+#[cfg(feature = "protocols")]
+#[doc(hidden)]
 pub mod stun;
+#[cfg(feature = "protocols")]
+#[doc(hidden)]
 pub mod tcp;
+#[cfg(feature = "protocols")]
+#[doc(hidden)]
 pub mod telnet;
+#[cfg(feature = "protocols")]
+#[doc(hidden)]
 pub mod tls;
+#[cfg(feature = "protocols")]
+#[doc(hidden)]
 pub mod udp;
+#[cfg(feature = "protocols")]
+#[doc(hidden)]
 pub mod vrrp;
 
 /// Default maximum captured packet size, independent of capture snap length.

@@ -147,6 +147,12 @@ def provenance(module, version):
 
 
 # No declared differences: ARP raises only dpkt's own errors.
+# OctetRail fixes dpkt here (address fields follow hln and pln). These keys are not compared;
+# tests/python checks the fixed results.
+FIXED = {
+    "cases.ieee802_long_lengths",
+}
+
 DECLARED = {}
 
 
@@ -192,7 +198,11 @@ def main():
         reports.append(flatten(json.loads(result.stdout)))
     reference = reports[1]
     for (_, module, v), report in zip(providers[2:], reports[2:], strict=True):
-        wrong = sorted(k for k in reference if report.get(k) != DECLARED.get(k, reference[k]))
+        wrong = sorted(
+            k
+            for k in reference
+            if k not in FIXED and report.get(k) != DECLARED.get(k, reference[k])
+        )
         C.require(not wrong, "ARP mismatch " + module + v + ": " + ", ".join(wrong))
     print(
         json.dumps(
@@ -204,6 +214,7 @@ def main():
                     k for k in reference if reports[0].get(k) != reference[k]
                 ),
                 "declared_differences": sorted(DECLARED),
+                "fixed_dpkt_bugs": sorted(FIXED),
                 "unexpected_mismatches": 0,
             },
             indent=2,

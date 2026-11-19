@@ -39,6 +39,19 @@ class GrePimTests(unittest.TestCase):
         self.assertIs(carried.ipx, carried.data)
         self.assertIsInstance(carried.data, ipx.IPX)
 
+    def test_zero_checksum_is_computed_on_pack(self):
+        packet = gre.GRE(flags=gre.GRE_CP, p=0x0800, data=b"\x45" + bytes(19))
+        wire = bytes(packet)
+        self.assertNotEqual(packet.sum, 0)
+        self.assertEqual(octetrail.in_cksum(wire), 0)
+        self.assertEqual(wire[6:8], b"\0\0")
+        # A given checksum is kept, and a parsed packet packs back as it was.
+        self.assertEqual(bytes(gre.GRE(flags=gre.GRE_CP, sum=5))[4:6], b"\0\x05")
+        parsed = gre.GRE(b"\x80\0\x08\0\0\0\0\0")
+        self.assertEqual(bytes(parsed), b"\x80\0\x08\0\0\0\0\0")
+        # Routing without the checksum flag leaves the field alone.
+        self.assertEqual(bytes(gre.GRE(flags=gre.GRE_RP))[4:8], bytes(4))
+
     def test_gre_errors(self):
         with self.assertRaises(UnpackError) as result:
             gre.GRE(CASES["gre_short_options"])

@@ -35,7 +35,8 @@ class CdpDtpEdpTests(unittest.TestCase):
         self.assertEqual(len(frame), len(CASES["eth_cdp_dpkt"]))
         packet = dtp.DTP(CASES["dtp_dpkt"])
         self.assertEqual((packet.v, packet.data), (4, [(1, b"\x12\x34")]))
-        self.assertEqual(bytes(packet), CASES["dtp_dpkt"][1:])
+        self.assertEqual(bytes(packet), CASES["dtp_dpkt"])
+        self.assertEqual(len(packet), len(CASES["dtp_dpkt"]))
         message = edp.EDP(CASES["edp_dpkt"])
         self.assertEqual((message.hlen, message.sum, message.seq), (316, 40566, 27))
         message.sum = 0

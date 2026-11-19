@@ -1,6 +1,6 @@
 [package]
 name = "octetrail-python"
-version = "0.7.2"
+version = "1.0.0"
 edition = "2021"
 rust-version = "1.85"
 license = "BSD-3-Clause"
@@ -14,7 +14,7 @@ test = false
 doctest = false
 
 [dependencies]
-octetrail = { path = "../.." }
+octetrail = { path = "../..", features = ["protocols"] }
 pyo3 = { version = "=0.30.1", features = ["abi3-py310"] }
 
 [lints.rust]

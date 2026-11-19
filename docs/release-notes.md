@@ -1,20 +1,67 @@
 # Release notes
 
+## 1.0.0
+
+OctetRail no longer copies dpkt bugs. The API is unchanged, but the results
+below differ from dpkt. From 1.0.0 on, versions follow semantic versioning:
+breaking changes only in a new major version.
+
+Breaking changes:
+
+- `str(packet)` is the same as `repr(packet)` instead of the text of
+  `bytes(packet)`.
+- `ip.IP_ADDR_ANY`, `IP_ADDR_BROADCAST`, `IP_ADDR_LOOPBACK`,
+  `IP_ADDR_MCAST_ALL` and `IP_ADDR_MCAST_LOCAL` are `bytes`, not `str`.
+- IP protocol 118 (Schedule Transfer Protocol) is no longer decoded with the
+  Spanning Tree `stp.STP` class. The payload stays bytes.
+- `rpc.RPC.Call` packs its data once, after the credentials, and `RPC.Auth`
+  pads its body to four bytes. Parsed calls now round-trip.
+- `vrrp.VRRP` reads `auth` right after the last address, so a `count` of 0 no
+  longer drops four bytes. `data` and the default `auth` are `b""`.
+- `dtp.DTP` packs its version byte, and `len()` is the packed length.
+- A new `dhcp.DHCP()` has bytes options and packs.
+- `gzip.Gzip.compress()` keeps the whole deflate stream.
+- An IPv6 AH header with a `len` of 0 has empty `auth_data`.
+- Packets built from fields get zero length and checksum fields filled in on
+  pack, as `ip.IP` already did: IPv6 `plen`, Diameter and AVP `len`, HTTP/2
+  frame length and the GRE checksum when its flag is set. Parsed packets pack
+  back to their own bytes.
+- Diameter `len` and `cmd` stay numbers after packing, and a new
+  `http2.Frame()` packs.
+- A GRE option field the flags select but the packet lacks packs as 0 instead
+  of raising `AttributeError`.
+- `pcap.UniversalReader` picks the reader from the first four bytes. It never
+  seeks, reads PCAPNG from the current position, and lets stream errors
+  through without trying the other format. Unknown magic raises
+  `ValueError("unknown capture format: magic ...")`.
+- `arp.ARP` reads and packs `hln`-byte hardware and `pln`-byte protocol
+  addresses. dpkt always used six and four bytes. Ethernet and IPv4 ARP is
+  unchanged.
+
+Stricter parsing, where dpkt accepted malformed input:
+
+- HTTP `Content-Length` must be decimal digits and chunk sizes hex digits,
+  with surrounding whitespace allowed. Signs, underscores and `0x` prefixes
+  raise `UnpackError`, so a negative length is now `HeaderValueError` instead
+  of `NeedData`. A chunk extension after `;` is now accepted.
+- `gzip.Gzip` checks the magic bytes and the deflate method.
+- An IPv6 option that runs past its header's declared length raises
+  `UnpackError`. dpkt read on into the next header.
+
+Rust crate:
+
+- The protocol modules are built only with the new `protocols` feature. The
+  capture I/O API needs no feature.
+- `octetrail::ipv6::Extension::parse` returns `Error::NotExtension` for a
+  protocol number that is not an IPv6 extension header, instead of panicking.
+
+Kept tolerant, because real captures need it: bytes after the last DNS
+section, extra words in an HTTP start line, a short last 802.11 information
+element, and captures cut short by the snap length.
+
 ## 0.7.2
 
-0.7.2 carries the 0.7.1 and 0.7.0 changes below. 0.7.1 was not published,
-because no macOS arm64 runner was available for its primary or fallback build.
-
-- When the macOS arm64 runner is not acquired, the release workflow now
-  cross-compiles the arm64 wheel on the Intel macOS runner, with the same
-  `macosx_11_0_arm64` tag and wheel checks. That wheel is not imported on the
-  build machine, because it cannot run on x86-64.
-
-## 0.7.1
-
-0.7.1 also carries the 0.7.0 changes below. 0.7.0 was not published, because
-the release workflow did not acquire a macOS arm64 runner and its fallback
-build did not start.
+First published 0.7 release.
 
 - SCTP chunks parsed from a `bytearray` keep their bytes when the caller
   changes the buffer afterwards, as in dpkt. Lazy SCTP chunk data and AH
@@ -26,19 +73,6 @@ build did not start.
   record at a time, as in dpkt.
 - Documentation fixes for Ethernet, DNS, SIP, PPP, SLL, IPv4, AH, Diameter,
   SCCP and NetFlow.
-- Stricter differential checks: declared differences in the SLL, PPP and AH
-  drivers must keep the whole inner IPv6 packet, the DNS driver checks that
-  dpkt still raises in each declared case, the DHCP driver checks the
-  `UnpackError` base of `MissingLengthError`, and the OSPF and SCTP summary no
-  longer lists cases that dpkt 1.9.6 did not run.
-- New radiotap fixture with aligned fields, and tests that check SCTP parsing
-  memory and the AH copy taken when parsing a `bytearray`.
-- The macOS arm64 fallback wheel builds on the macOS 26 runner, since GitHub
-  retired macOS 14. The probe for an unacquired macOS 15 arm64 runner now runs
-  whatever the matrix result is, and also counts a job reported as cancelled
-  with no runner and no steps.
-
-## 0.7.0
 
 Packets whose headers nest deeper than the Python recursion limit now raise
 `octetrail.NestingError`, both an `UnpackError` and a `RecursionError`, where

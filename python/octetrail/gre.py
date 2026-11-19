@@ -104,13 +104,22 @@ class GRE(Packet):
         opt_fmtlen = struct.calcsize("".join(self.opt_fields_fmts()[1]))
         return self.__hdr_len__ + opt_fmtlen + sum(map(len, self.sre)) + len(self.data)
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # A packet built from fields gets a zero checksum computed on pack. A
+        # parsed packet packs back to its own bytes.
+        self._fill_on_pack = not args
+
     def __bytes__(self):
         fields, fmts = self.opt_fields_fmts()
-        if fields:
-            vals = []
-            for f in fields:
-                vals.append(getattr(self, f))
-            opt_s = struct.pack("!" + "".join(fmts), *vals)
-        else:
-            opt_s = b""
-        return self.pack_hdr() + opt_s + b"".join(map(bytes, self.sre)) + bytes(self.data)
+        fmt = "!" + "".join(fmts)
+        vals = [getattr(self, f, 0) for f in fields]
+        rest = b"".join(map(bytes, self.sre)) + bytes(self.data)
+        out = self.pack_hdr() + struct.pack(fmt, *vals) + rest
+        if self._fill_on_pack and self.v == 0 and self.flags & GRE_CP and vals[0] == 0:
+            # A zero checksum is computed over the GRE header and payload
+            # (RFC 2784), as IPv4 does for its header checksum.
+            self.sum = _native._inet_checksum(out)
+            vals[0] = self.sum
+            out = self.pack_hdr() + struct.pack(fmt, *vals) + rest
+        return out

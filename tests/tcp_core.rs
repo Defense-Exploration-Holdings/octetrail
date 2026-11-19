@@ -1,3 +1,4 @@
+#![cfg(feature = "protocols")]
 use octetrail::tcp::{parse_options, Error, Header, Limits, Segment, HEADER_LEN};
 
 // Independently assembled offline fields and the opaque ASCII payload "rail".

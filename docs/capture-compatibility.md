@@ -46,8 +46,8 @@ They are a small explicit subset of the versioned [API inventory](capture-api-le
 | pcapng | PCAPNG_BT_SHB=0x0a0d0d0a, PCAPNG_BT_IDB=1, PCAPNG_BT_EPB=6 |
 
 Full DLT/option/magic inventories, header/block classes, arbitrary packet objects
-and protocol decoders remain absent. The measured [UniversalReader
-factory](universal-reader.md) is a 1.9.8-only API and is excluded
+and protocol decoders remain absent. The [UniversalReader
+factory](universal-reader.md) has no 1.9.6 counterpart and is excluded
 from the common 1.9.6/1.9.8 consumer denominator. The known strict parsing rules,
 per-interface clock differences and restricted custom-clock seconds output remain unchanged.
 
@@ -63,7 +63,7 @@ in the [README](../README.md).
 
 ## Distribution decision remains separate
 
-The default distribution and import namespace remain `octetrail==0.7.2`. It
+The distribution and import namespace are `octetrail`. It
 installs no `dpkt` package, startup hook, namespace alias, dependency or
 Provides-Dist declaration. It cannot satisfy `dpkt==1.9.6`, `dpkt==1.9.8`, or any
 other dpkt requirement. Both packages can coexist, with normal `import dpkt`

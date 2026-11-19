@@ -42,6 +42,13 @@ class GzipTests(unittest.TestCase):
             with self.subTest(name=name), self.assertRaisesRegex(NeedData, "^" + text + "$"):
                 gzip.Gzip(CASES[name])
 
+    def test_magic_and_method_are_checked(self):
+        good = bytes(gzip.Gzip(data=b"x"))
+        with self.assertRaisesRegex(UnpackError, "not a gzip member"):
+            gzip.Gzip(b"PK" + good[2:])
+        with self.assertRaisesRegex(UnpackError, "unsupported gzip method 0"):
+            gzip.Gzip(good[:2] + b"\x00" + good[3:])
+
     def test_filename_not_utf8_is_both_errors(self):
         with self.assertRaises(gzip.FilenameDecodeError) as caught:
             gzip.Gzip(CASES["name_not_utf8"])
@@ -58,6 +65,12 @@ class GzipTests(unittest.TestCase):
         self.assertEqual(packet.flags, gzip.GZIP_FNAME | gzip.GZIP_FCOMMENT)
         parsed = gzip.Gzip(raw)
         self.assertEqual((parsed.filename, parsed.comment, parsed.data), ("a.txt", b"c", b"x"))
+
+    def test_compress_keeps_the_whole_stream(self):
+        payload = bytes(range(256)) * 400
+        packet = gzip.Gzip(data=payload)
+        packet.compress()
+        self.assertEqual(packet.decompress(), payload)
 
 
 if __name__ == "__main__":

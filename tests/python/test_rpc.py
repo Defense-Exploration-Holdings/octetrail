@@ -28,9 +28,8 @@ class RpcTests(unittest.TestCase):
         self.assertEqual(call.cred.flavor, rpc.AUTH_UNIX)
         self.assertEqual(call.verf.data, b"")
         self.assertEqual(call.data, b"\x00\x00\x00\x01")
-        # As in dpkt, a parsed call packs its remaining data before the
-        # credentials as well as after them.
-        self.assertEqual(bytes(call), raw[8:24] + call.data + raw[24:])
+        self.assertEqual(bytes(call), raw[8:])
+        self.assertEqual(bytes(message), raw)
 
     def test_replies(self):
         accept = RPC(case("reply_prog_mismatch")).reply.accept

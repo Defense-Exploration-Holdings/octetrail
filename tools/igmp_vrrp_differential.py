@@ -146,6 +146,18 @@ def provenance(module, version):
 
 
 # No declared differences: IGMP and VRRP raise only dpkt's own errors.
+# OctetRail fixes dpkt here (VRRP auth starts after the last address, defaults are bytes, protocol 118 is not Spanning Tree). These keys are not compared;
+# tests/python checks the fixed results.
+FIXED = {
+    "cases.ip6_proto_118",
+    "cases.vrrp_zero_count",
+    "constructed.default_vrrp_bytes",
+    "constructed.ip6_table",
+    # An IPv6 packet built from fields gets its payload length on pack.
+    "constructed.ip6_igmp_packed",
+    "constructed.ip6_vrrp_packed",
+}
+
 DECLARED = {}
 
 
@@ -191,7 +203,11 @@ def main():
         reports.append(flatten(json.loads(result.stdout)))
     reference = reports[1]
     for (_, module, v), report in zip(providers[2:], reports[2:], strict=True):
-        wrong = sorted(k for k in reference if report.get(k) != DECLARED.get(k, reference[k]))
+        wrong = sorted(
+            k
+            for k in reference
+            if k not in FIXED and report.get(k) != DECLARED.get(k, reference[k])
+        )
         C.require(not wrong, "IGMP or VRRP mismatch " + module + v + ": " + ", ".join(wrong))
     print(
         json.dumps(
@@ -203,6 +219,7 @@ def main():
                     k for k in reference if reports[0].get(k) != reference[k]
                 ),
                 "declared_differences": sorted(DECLARED),
+                "fixed_dpkt_bugs": sorted(FIXED),
                 "unexpected_mismatches": 0,
             },
             indent=2,

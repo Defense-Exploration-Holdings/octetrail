@@ -12,6 +12,17 @@ or `Err` without panicking, overflowing or exhausting memory.
 | `dns` | DNS messages, including name compression |
 | `http` | HTTP/1.x start lines, headers and body selection |
 | `tls` | TLS record framing, handshake headers and ServerHello |
+| `http2` | HTTP/2 frame boundaries |
+| `diameter` | Diameter AVP walk |
+| `dhcp` | DHCP options |
+| `netflow` | NetFlow record split |
+| `ieee80211` | 802.11 information elements and radiotap present words |
+| `h225` | H.225.0 element walk |
+| `asn1` | ASN.1 walk, including the depth and element limits |
+
+The [Fuzz workflow](../.github/workflows/fuzz.yml) runs every target for 15
+minutes each Monday and on demand, keeping the corpus in the Actions cache. A
+crash fails the run and uploads the reproducing input as an artifact.
 
 The crate is not part of the main workspace, so normal builds and wheels do not
 need nightly Rust. To run a target:

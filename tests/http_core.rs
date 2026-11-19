@@ -1,3 +1,4 @@
+#![cfg(feature = "protocols")]
 use octetrail::http::{body_allowed, message, Error, Request, Response};
 
 #[test]

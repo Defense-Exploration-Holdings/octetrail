@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 import octetrail
-from octetrail import NeedData, arp, ethernet
+from octetrail import NeedData, PackError, arp, ethernet
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("arp_fixture", ROOT / "tools/arp_differential.py")
@@ -33,6 +33,22 @@ class ArpTests(unittest.TestCase):
         self.assertEqual(arp.ARP(CASES["reply_with_padding"]).data, bytes(18))
         with self.assertRaises(NeedData):
             arp.ARP(CASES["short"])
+
+    def test_other_address_lengths(self):
+        # Hardware 8 bytes, protocol 16 bytes (an IPv6-sized protocol address).
+        sha, spa, tha, tpa = b"H" * 8, b"P" * 16, b"h" * 8, b"p" * 16
+        raw = b"\x00\x06\x86\xdd\x08\x10\x00\x01" + sha + spa + tha + tpa + b"tail"
+        message = arp.ARP(raw)
+        self.assertEqual((message.hln, message.pln), (8, 16))
+        self.assertEqual((message.sha, message.spa, message.tha, message.tpa), (sha, spa, tha, tpa))
+        self.assertEqual(message.data, b"tail")
+        self.assertEqual(bytes(message), raw)
+        self.assertEqual(len(message), len(raw))
+        with self.assertRaises(NeedData):
+            arp.ARP(raw[:40])
+        message.sha = b"short"
+        with self.assertRaises(PackError):
+            bytes(message)
 
     def test_ethernet_decodes_and_infers_arp(self):
         self.assertIsInstance(ethernet.Ethernet(CASES["ethernet"]).arp, arp.ARP)

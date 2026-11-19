@@ -27,10 +27,12 @@ assert rpc.RPC(bytes(call)).call.prog == 100000
 `unpack_xdrlist(cls, buf)` reads XDR optional-data lists of `cls` objects and
 `pack_xdrlist(*items)` packs them.
 
-## dpkt behavior kept as is
+## Packing
 
-- A parsed `Call` packs its remaining data both before and after the
-  credentials, because dpkt packs the header with its data first.
+- A `Call` packs its header, `cred`, `verf` and then `data`. dpkt also packs
+  `data` before the credentials, so a parsed call does not round-trip there.
+- `Auth` pads its body to a multiple of four bytes, as XDR requires, and
+  `len()` counts the padding. dpkt does neither.
 - `unpack_xdrlist` continues from each item's `data`, so it suits classes whose
   `data` is the rest of the buffer. `RPC.Auth` is not one of them.
 - `RPC.Reply.Accept()` has no `verf` until one is set, so it does not pack.

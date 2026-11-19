@@ -233,6 +233,9 @@ def _kept_as_bytes(cls, wire, depth):
 # header, dpkt raises AttributeError out of AH, and out of the IPv4 or IPv6
 # packet around it. OctetRail raises FragmentOffsetError, an UnpackError, for
 # the inner packet, so AH keeps it as bytes, as IP and ICMP6 do.
+# An IPv6 packet built from fields gets its payload length on pack.
+FIXED = {"constructed.ip6_ah_packed"}
+
 DECLARED = {
     "cases." + name: _kept_as_bytes(cls, raw, depth)
     for name, cls, raw, depth in (
@@ -290,7 +293,9 @@ def main():
         reports.append(flatten(json.loads(result.stdout)))
     reference = reports[1]
     for (_, module, v), report in zip(providers[2:], reports[2:], strict=True):
-        wrong = sorted(k for k in reference if not _matches(k, report.get(k), reference))
+        wrong = sorted(
+            k for k in reference if k not in FIXED and not _matches(k, report.get(k), reference)
+        )
         C.require(not wrong, "AH or ESP mismatch " + module + v + ": " + ", ".join(wrong))
     print(
         json.dumps(
@@ -302,6 +307,7 @@ def main():
                     k for k in reference if reports[0].get(k) != reference[k]
                 ),
                 "declared_differences": sorted(DECLARED),
+                "fixed_dpkt_bugs": sorted(FIXED),
                 "unexpected_mismatches": 0,
             },
             indent=2,
